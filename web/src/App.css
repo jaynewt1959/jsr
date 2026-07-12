@@ -1,0 +1,178 @@
+/* App.css — Jay's Sight Reading */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  background: #0d0d1a;
+  color: #eee;
+  font-family: "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  overflow: hidden;
+}
+
+.app-root {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.tap-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.82);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  z-index: 100;
+  font-size: 18px;
+  padding: 24px;
+  text-align: center;
+}
+
+.tap-hint {
+  font-size: 14px;
+  opacity: 0.6;
+}
+
+.layout {
+  display: flex;
+  flex-direction: row;
+  height: 100%;
+  width: 100%;
+  padding: 20px;
+  gap: 20px;
+}
+
+.score-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.score-header {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+}
+
+.key-label {
+  font-size: 20px;
+  font-weight: 700;
+  color: #c8d0ff;
+}
+
+.next-note-label {
+  font-size: 14px;
+  color: #3b9dff;
+}
+
+.wrong-banner {
+  background: rgba(224, 60, 60, 0.18);
+  border: 1px solid #e03c3c;
+  border-radius: 8px;
+  padding: 10px 16px;
+  color: #ff8080;
+  font-size: 14px;
+}
+
+.complete-banner {
+  background: rgba(60, 210, 120, 0.15);
+  border: 1px solid #3cd278;
+  border-radius: 8px;
+  padding: 12px 20px;
+  color: #3cd278;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.advance-btn {
+  background: #3cd278;
+  color: #0d0d1a;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 20px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.advance-btn:active { opacity: 0.8; }
+
+.sidebar {
+  width: 180px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding-top: 4px;
+}
+
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sidebar-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #777;
+}
+
+.pass-counter {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.pass-label { font-size: 14px; color: #aaa; }
+
+.pass-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #3b9dff;
+  font-variant-numeric: tabular-nums;
+}
+
+.exercise-label { font-size: 13px; color: #666; }
+
+.midi-status {
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+.midi-status.ok  { background: rgba(60, 210, 120, 0.15); color: #3cd278; }
+.midi-status.off { background: rgba(255,255,255,0.06); color: #666; }
+
+.restart-btn {
+  background: rgba(255,255,255,0.08);
+  color: #ccc;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  padding: 10px 0;
+  width: 100%;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.restart-btn:active { background: rgba(255,255,255,0.14); }
+
+.dev-tools { margin-top: auto; }
