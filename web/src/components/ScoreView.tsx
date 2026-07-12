@@ -218,12 +218,13 @@ export function ScoreView({ exercise, noteStatuses }: ScoreViewProps) {
     <div
       ref={containerRef}
       style={{
-        background: "#f5f0e8",   // warm cream — like real manuscript paper
-        borderRadius: 12,
-        padding: "12px 8px",
+        background: "#ffffff",
+        borderRadius: 10,
+        padding: "16px 10px 10px",
         overflowX: "auto",
         width: "100%",
-        boxShadow: "0 2px 16px rgba(0,0,0,0.5)",
+        border: "2px solid #d0d8f8",
+        boxShadow: "0 4px 24px rgba(30,40,120,0.22)",
       }}
     />
   );
