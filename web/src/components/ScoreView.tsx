@@ -100,10 +100,21 @@ export function ScoreView({ exercise, noteStatuses }: ScoreViewProps) {
 
     const renderer = new Renderer(el, Renderer.Backends.SVG);
     renderer.resize(totalWidth, height);
+
+    // Force a white background on the SVG element directly.
+    // CSS background on the containing div is unreliable because VexFlow's
+    // SVG is transparent and the WKWebView background shows through.
+    const svgEl = el.querySelector("svg");
+    if (svgEl) {
+      const bgRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      bgRect.setAttribute("width", "100%");
+      bgRect.setAttribute("height", "100%");
+      bgRect.setAttribute("fill", "#ffffff");
+      svgEl.insertBefore(bgRect, svgEl.firstChild);
+    }
+
     const ctx = renderer.getContext();
     ctx.setFont("Arial", 11);
-    // Dark ink for stave lines, clef, time signature, barlines
-    // (score is rendered on a cream/white background).
     ctx.setFillStyle("#1a1a2a");
     ctx.setStrokeStyle("#1a1a2a");
 

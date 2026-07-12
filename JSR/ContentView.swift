@@ -123,136 +123,126 @@ struct ContentView: View {
     }
 
     // MARK: - Sidebar
+    //
+    // Principle: every element has maximum contrast.
+    //   - All text: .white (never dim grey)
+    //   - Buttons: solid opaque system colours (blue, green)
+    //   - Backgrounds: opaque dark, never translucent
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
 
-            // ── Passes ──
-            sidebarSection(title: "Progress") {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text("Passes")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.75))
-                    Spacer()
+            // ─ PASSES ───────────────────
+            VStack(alignment: .leading, spacing: 6) {
+                Text("PASSES")
+                    .font(.system(size: 11, weight: .heavy))
+                    .tracking(2)
+                    .foregroundColor(.white)
+
+                HStack(alignment: .lastTextBaseline, spacing: 6) {
                     Text("\(appState.passCount)")
-                        .font(.system(size: 44, weight: .black, design: .rounded))
+                        .font(.system(size: 52, weight: .heavy, design: .rounded))
+                        .foregroundColor(.yellow)
                         .monospacedDigit()
-                        .foregroundColor(Color(hex: "60c0ff"))
                     Text("/ 3")
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
-                        .foregroundColor(.white.opacity(0.5))
-                        .padding(.leading, 2)
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
                 }
-                // Pass pip indicators
-                HStack(spacing: 8) {
+
+                HStack(spacing: 10) {
                     ForEach(0..<3, id: \.self) { i in
-                        Circle()
-                            .fill(i < appState.passCount
-                                  ? Color(hex: "60c0ff")
-                                  : Color.white.opacity(0.18))
-                            .frame(width: 12, height: 12)
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(i < appState.passCount ? Color.yellow : Color.white.opacity(0.3))
+                            .frame(width: 36, height: 8)
                     }
-                    Spacer()
-                    Text("Ex \((appState.exerciseIndex % 5) + 1) / 5")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.6))
                 }
+
+                Text("Exercise \((appState.exerciseIndex % 5) + 1) of 5")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
 
-            Rectangle()
-                .fill(Color.white.opacity(0.10))
-                .frame(height: 1)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 6)
+            Color.white.opacity(0.2).frame(height: 1).padding(.horizontal, 16)
 
-            // ── Actions ──
-            sidebarSection(title: "Actions") {
-                VStack(spacing: 10) {
-                    if appState.exerciseComplete {
-                        Button(action: { appState.nextExercise() }) {
-                            Label("Next exercise", systemImage: "arrow.right")
-                                .font(.system(size: 15, weight: .bold))
-                                .foregroundColor(.black)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 13)
-                                .background(Color(hex: "3de88a"))
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
+            // ─ BUTTONS ─────────────────
+            VStack(spacing: 10) {
+                // Next exercise — solid green, shown on completion
+                if appState.exerciseComplete {
+                    Button(action: { appState.nextExercise() }) {
+                        HStack {
+                            Spacer()
+                            Image(systemName: "arrow.right.circle.fill")
+                            Text("Next exercise")
+                            Spacer()
                         }
-                    }
-                    Button(action: { appState.restart() }) {
-                        Label("Restart", systemImage: "arrow.counterclockwise")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 13)
-                            .background(Color(hex: "1e2a5e"))
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .stroke(Color(hex: "4060d0"), lineWidth: 1.5)
-                            )
+                        .font(.system(size: 16, weight: .heavy))
+                        .foregroundColor(.black)
+                        .padding(.vertical, 14)
+                        .background(Color.green)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
                 }
+
+                // Restart — solid blue, always visible
+                Button(action: { appState.restart() }) {
+                    HStack {
+                        Spacer()
+                        Image(systemName: "arrow.counterclockwise")
+                        Text("Restart")
+                        Spacer()
+                    }
+                    .font(.system(size: 16, weight: .heavy))
+                    .foregroundColor(.white)
+                    .padding(.vertical, 14)
+                    .background(Color.blue)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
 
-            Rectangle()
-                .fill(Color.white.opacity(0.10))
-                .frame(height: 1)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 6)
+            Color.white.opacity(0.2).frame(height: 1).padding(.horizontal, 16)
 
-            // ── MIDI ──
-            sidebarSection(title: "MIDI") {
+            // ─ MIDI ────────────────────
+            VStack(alignment: .leading, spacing: 8) {
+                Text("MIDI")
+                    .font(.system(size: 11, weight: .heavy))
+                    .tracking(2)
+                    .foregroundColor(.white)
+
                 if appState.midiConnected {
                     Label(
                         appState.midiSourceName.isEmpty ? "Connected" : appState.midiSourceName,
-                        systemImage: "pianokeys"
+                        systemImage: "pianokeys.fill"
                     )
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(Color(hex: "3de88a"))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(hex: "0d3320"))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color(hex: "3de88a").opacity(0.5), lineWidth: 1)
-                    )
+                    .background(Color.green)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 } else {
-                    Text("No keyboard")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.5))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.white.opacity(0.06))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.white.opacity(0.15), lineWidth: 1)
-                        )
+                    HStack {
+                        Image(systemName: "pianokeys")
+                        Text("No keyboard")
+                    }
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(white: 0.2))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
 
             Spacer()
         }
-        .padding(.top, 20)
-    }
-
-    private func sidebarSection<C: View>(
-        title: String,
-        @ViewBuilder content: () -> C
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title.uppercased())
-                .font(.system(size: 10, weight: .black))
-                .tracking(2.0)
-                .foregroundColor(Color(hex: "60c0ff").opacity(0.8))
-            content()
-        }
-        .padding(.horizontal, 16)
-        .padding(.bottom, 16)
     }
 
     // MARK: - MIDI overlay
