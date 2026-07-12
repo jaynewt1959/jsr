@@ -1,28 +1,20 @@
 /**
  * App.tsx — Jay's Sight Reading
  *
- * Top-level composition:
- *   - Exercise engine state (useReducer)
- *   - MIDI input via WebSocket (useMidi)
- *   - Score rendering (ScoreView)
- *   - Session sidebar: pass counter, exercise info, advance button
+ * The React layer renders ONLY the VexFlow score.
+ * All other UI (header, sidebar, overlays, buttons) is
+ * implemented natively in SwiftUI (ContentView.swift).
+ *
+ * JS → Swift bridge: state updates posted via jsrBridge message handler.
+ * Swift → JS bridge: window.jsr.{restart, nextExercise} exposed below.
  */
 
-import { useReducer, useCallback, useState } from "react";
-import {
-  initialState,
-  reduce,
-  passLabel,
-  currentNote,
-} from "./engine/exerciseEngine";
+import { useReducer, useCallback, useState, useEffect } from "react";
+import { initialState, reduce, currentNote } from "./engine/exerciseEngine";
 import { useMidi } from "./hooks/useMidi";
 import type { MidiState } from "./hooks/useMidi";
 import { ScoreView } from "./components/ScoreView";
 import "./App.css";
-
-// Declare Vite-injected constants.
-declare const __BUILD_TIME__: string;
-declare const __DEV_TOOLS__: boolean;
 
 export default function App() {
   const [exState, dispatch] = useReducer(reduce, undefined, () => initialState(0));
@@ -33,113 +25,44 @@ export default function App() {
     activeSource: null,
   });
 
-  const handleNoteOn = useCallback(
-    (note: number) => {
-      dispatch({ type: "NOTE_PLAYED", midiNote: note });
-    },
-    []
-  );
+  const handleNoteOn = useCallback((note: number) => {
+    dispatch({ type: "NOTE_PLAYED", midiNote: note });
+  }, []);
 
-  useMidi({
-    onNoteOn: handleNoteOn,
-    onMidiState: setMidiState,
-  });
+  useMidi({ onNoteOn: handleNoteOn, onMidiState: setMidiState });
 
+  // Expose Swift → JS entry points.
+  useEffect(() => {
+    (window as any).jsr = {
+      restart:     () => dispatch({ type: "RESTART_EXERCISE" }),
+      nextExercise:() => dispatch({ type: "ADVANCE_EXERCISE" }),
+    };
+  }, [dispatch]);
+
+  // Post state to SwiftUI via WKScriptMessageHandler on every change.
   const cn = currentNote(exState);
-  const isComplete = exState.exerciseComplete;
-  // "keyboard connected" = MIDI started AND at least one source present.
-  const keyboardConnected = midiState.running && midiState.sources.length > 0;
+  useEffect(() => {
+    const bridge = (window as any).webkit?.messageHandlers?.jsrBridge;
+    if (!bridge) return;
+    bridge.postMessage(JSON.stringify({
+      passCount:        exState.passCount,
+      exerciseIndex:    exState.exerciseIndex,
+      exerciseComplete: exState.exerciseComplete,
+      wrongNoteActive:  exState.wrongNoteActive,
+      currentHand:      cn?.staff   ?? null,
+      currentFinger:    cn?.finger  ?? null,
+      exerciseKey:      exState.exercise.key,
+      midiConnected:    midiState.running && midiState.sources.length > 0,
+      midiSourceName:   midiState.activeSource ?? "",
+    }));
+  }, [exState, midiState, cn]);
 
   return (
-    <div className="app-root">
-      {/* Tap-to-begin overlay (absorbs the iOS system gesture gate) */}
-      {!keyboardConnected && (
-        <div className="tap-overlay">
-          <p>Connect your MIDI keyboard to begin.</p>
-          <p className="tap-hint">
-            {midiState.sources.length > 0
-              ? `Keyboard detected: ${midiState.sources[0]}`
-              : "No MIDI keyboard detected yet…"}
-          </p>
-        </div>
-      )}
-
-      <div className="layout">
-        {/* Score panel */}
-        <div className="score-panel">
-          <div className="score-header">
-            <span className="key-label">{exState.exercise.key}</span>
-            {cn && (
-              <span className="next-note-label">
-                Next: {cn.staff === "treble" ? "Right hand" : "Left hand"}
-                {" "}— finger {cn.finger}
-              </span>
-            )}
-          </div>
-
-          <ScoreView
-            exercise={exState.exercise}
-            noteStatuses={exState.noteStatuses}
-          />
-
-          {exState.wrongNoteActive && (
-            <div className="wrong-banner">
-              Wrong note — find the highlighted note and try again.
-            </div>
-          )}
-
-          {isComplete && (
-            <div className="complete-banner">
-              <span>Exercise complete!</span>
-              <button
-                className="advance-btn"
-                onClick={() => dispatch({ type: "ADVANCE_EXERCISE" })}
-              >
-                Next exercise →
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Sidebar */}
-        <aside className="sidebar">
-          <div className="sidebar-section">
-            <div className="sidebar-title">Progress</div>
-            <div className="pass-counter">
-              <span className="pass-label">Passes</span>
-              <span className="pass-value">{passLabel(exState)}</span>
-            </div>
-            <div className="exercise-label">
-              Exercise {(exState.exerciseIndex % 5) + 1} / 5
-            </div>
-          </div>
-
-          <div className="sidebar-section">
-            <div className="sidebar-title">MIDI</div>
-          <div className={`midi-status ${keyboardConnected ? "ok" : "off"}`}>
-              {keyboardConnected
-                ? midiState.activeSource ?? "Connected"
-                : "No MIDI"}
-            </div>
-          </div>
-
-          <div className="sidebar-section">
-            <button
-              className="restart-btn"
-              onClick={() => dispatch({ type: "RESTART_EXERCISE" })}
-            >
-              ↺ Restart
-            </button>
-          </div>
-
-          {__DEV_TOOLS__ && (
-            <div className="sidebar-section dev-tools">
-              <div className="sidebar-title">Dev</div>
-              <div style={{ fontSize: 10, opacity: 0.5 }}>{__BUILD_TIME__}</div>
-            </div>
-          )}
-        </aside>
-      </div>
+    <div className="score-root">
+      <ScoreView
+        exercise={exState.exercise}
+        noteStatuses={exState.noteStatuses}
+      />
     </div>
   );
 }

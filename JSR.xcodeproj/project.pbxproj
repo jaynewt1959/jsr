@@ -18,11 +18,13 @@
 		949046D241DBA6BF70DC1AB3 /* HummingbirdWebSocket in Frameworks */ = {isa = PBXBuildFile; productRef = F9C3A3EE6818489C724DBCEC /* HummingbirdWebSocket */; };
 		A0BCA17B61B628D8DD9EDF20 /* HTTPServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8179ED875C59AB64EE572B7C /* HTTPServer.swift */; };
 		B89EDD77CA15917B37D97309 /* JSRApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F66BD26C4B769C2E9A07EDDC /* JSRApp.swift */; };
+		D5C78696BEF27E26022DC89F /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F6600AD63C0D3F61D7E36B3 /* AppState.swift */; };
 		F812F5DC2162677C03C1D295 /* MidiInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = A25C814E255169544DB894D4 /* MidiInput.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		07D11C7186824C7AB75A2C6F /* Wire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Wire.swift; sourceTree = "<group>"; };
+		0F6600AD63C0D3F61D7E36B3 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		47AC4F87308DC6BB4D6E6D5E /* MidiCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MidiCoordinator.swift; sourceTree = "<group>"; };
 		6FCF511F996E11B749FCCBDE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8179ED875C59AB64EE572B7C /* HTTPServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPServer.swift; sourceTree = "<group>"; };
@@ -76,6 +78,7 @@
 		CA3F5E9F71018C4E6FDB94A0 /* JSR */ = {
 			isa = PBXGroup;
 			children = (
+				0F6600AD63C0D3F61D7E36B3 /* AppState.swift */,
 				B00003EF4A1AB38F3E969ACE /* ContentView.swift */,
 				C501D6CCDCA45E004E0021FC /* EngineHost.swift */,
 				E071D897603DF7F1A6800C82 /* Info.plist */,
@@ -220,6 +223,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D5C78696BEF27E26022DC89F /* AppState.swift in Sources */,
 				7B76F7C8C729243184F60336 /* ContentView.swift in Sources */,
 				92E0A0BF8AA401F59832F4C4 /* EngineHost.swift in Sources */,
 				A0BCA17B61B628D8DD9EDF20 /* HTTPServer.swift in Sources */,
