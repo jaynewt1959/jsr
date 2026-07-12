@@ -60,11 +60,12 @@ function midiToVex(midi: number): { keys: string[]; accidental?: string } {
 // Colour map
 // ---------------------------------------------------------------------------
 
+// Notes on a light (cream) background — dark ink + coloured highlights.
 const STATUS_COLOUR: Record<NoteStatus, string> = {
-  pending:  "#eeeeee",
-  current:  "#3b9dff",
-  correct:  "#666666",
-  wrong:    "#e03c3c",
+  pending: "#1a1a2a",  // near-black ink
+  current: "#1060c8",  // clear blue
+  correct: "#aaaaaa",  // faded grey (already played)
+  wrong:   "#cc1f1f",  // red
 };
 
 // ---------------------------------------------------------------------------
@@ -101,10 +102,10 @@ export function ScoreView({ exercise, noteStatuses }: ScoreViewProps) {
     renderer.resize(totalWidth, height);
     const ctx = renderer.getContext();
     ctx.setFont("Arial", 11);
-    // Light grey for stave lines, clef, time signature, and barlines.
-    // Notes override this per-note via setStyle().
-    ctx.setFillStyle("#c8cce8");
-    ctx.setStrokeStyle("#c8cce8");
+    // Dark ink for stave lines, clef, time signature, barlines
+    // (score is rendered on a cream/white background).
+    ctx.setFillStyle("#1a1a2a");
+    ctx.setStrokeStyle("#1a1a2a");
 
     const trebleY = 20;
     const bassY   = 140;
@@ -137,7 +138,7 @@ export function ScoreView({ exercise, noteStatuses }: ScoreViewProps) {
           const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
           txt.setAttribute("x", String(x + 10));
           txt.setAttribute("y", String(trebleY - 4));
-          txt.setAttribute("fill", "#9ba8e0");
+          txt.setAttribute("fill", "#2a4ea8");
           txt.setAttribute("font-size", "11");
           txt.setAttribute("font-family", "Arial");
           txt.setAttribute("font-weight", "bold");
@@ -217,11 +218,12 @@ export function ScoreView({ exercise, noteStatuses }: ScoreViewProps) {
     <div
       ref={containerRef}
       style={{
-        background: "#1a1a2e",
+        background: "#f5f0e8",   // warm cream — like real manuscript paper
         borderRadius: 12,
-        padding: "8px 4px",
+        padding: "12px 8px",
         overflowX: "auto",
         width: "100%",
+        boxShadow: "0 2px 16px rgba(0,0,0,0.5)",
       }}
     />
   );
