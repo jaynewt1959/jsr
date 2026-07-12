@@ -42,10 +42,10 @@ struct InboundCommand: Decodable, Sendable {
 // MARK: - MIDI domain model
 
 /// A normalised MIDI note event (no CoreMIDI types — safe to test).
-struct NoteEvent: Equatable, Sendable {
-    let note: Int
-    let velocity: Int
-    let isOn: Bool
+public struct NoteEvent: Equatable, Sendable {
+    public let note: Int
+    public let velocity: Int
+    public let isOn: Bool
     /// Host-clock timestamp in nanoseconds (mach_absolute_time units).
-    let timestampNs: UInt64
+    public let timestampNs: UInt64
 }
