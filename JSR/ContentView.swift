@@ -109,7 +109,9 @@ struct WebViewContainer: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
-        config.websiteDataStore = WKWebsiteDataStore.default()
+        // Non-persistent store: no disk cache, so every app launch gets
+        // the fresh web/dist from the bundle (avoids stale CSS after updates).
+        config.websiteDataStore = WKWebsiteDataStore.nonPersistent()
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
         let webView = WKWebView(frame: .zero, configuration: config)

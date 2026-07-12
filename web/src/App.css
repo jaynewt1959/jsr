@@ -9,8 +9,8 @@
 html, body, #root {
   width: 100%;
   height: 100%;
-  background: #1c1e2e;    /* deep navy */
-  color: #e8eaf6;         /* near-white for all body text */
+  background: #1e2030;
+  color: #ffffff;        /* pure white — unambiguous on any dark bg */
   font-family: "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
   overflow: hidden;
 }
@@ -67,15 +67,15 @@ html, body, #root {
 }
 
 .key-label {
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 22px;
+  font-weight: 800;
   color: #ffffff;
 }
 
 .next-note-label {
-  font-size: 14px;
-  font-weight: 500;
-  color: #6ea8ff;    /* bright blue — readable on dark bg */
+  font-size: 15px;
+  font-weight: 600;
+  color: #70b8ff;
 }
 
 .wrong-banner {
@@ -129,11 +129,11 @@ html, body, #root {
 }
 
 .sidebar-title {
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.10em;
-  color: #c0c8e4;
+  letter-spacing: 0.12em;
+  color: #ffffff;
 }
 
 .pass-counter {
@@ -142,16 +142,16 @@ html, body, #root {
   align-items: baseline;
 }
 
-.pass-label { font-size: 14px; color: #dce0f0; }
+.pass-label { font-size: 14px; color: #ffffff; }
 
 .pass-value {
-  font-size: 28px;
-  font-weight: 700;
-  color: #6ea8ff;
+  font-size: 32px;
+  font-weight: 800;
+  color: #70b8ff;
   font-variant-numeric: tabular-nums;
 }
 
-.exercise-label { font-size: 13px; color: #c0c8e4; }
+.exercise-label { font-size: 14px; color: #ffffff; }
 
 .midi-status {
   font-size: 13px;
@@ -160,18 +160,18 @@ html, body, #root {
   font-weight: 500;
 }
 
-.midi-status.ok  { background: rgba(60, 210, 120, 0.20); color: #4ddd8a; border: 1px solid rgba(60,210,120,0.5); font-weight: 600; }
-.midi-status.off { background: rgba(255,255,255,0.08); color: #c0c8e4; border: 1px solid rgba(255,255,255,0.15); }
+.midi-status.ok  { background: #1a5c38; color: #5dffa0; border: 1px solid #2a8a52; font-weight: 700; }
+.midi-status.off { background: rgba(255,255,255,0.10); color: #ffffff; border: 1px solid rgba(255,255,255,0.25); }
 
 .restart-btn {
-  background: rgba(255,255,255,0.12);
-  color: #e8ecfc;
-  border: 1px solid rgba(255,255,255,0.30);
+  background: rgba(255,255,255,0.15);
+  color: #ffffff;
+  border: 2px solid rgba(255,255,255,0.45);
   border-radius: 8px;
-  padding: 10px 0;
+  padding: 12px 0;
   width: 100%;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
   cursor: pointer;
 }
 
