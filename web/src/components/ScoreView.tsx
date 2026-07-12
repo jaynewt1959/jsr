@@ -20,7 +20,6 @@ import {
   Voice,
   Formatter,
   Annotation,
-  Modifier,
   Accidental,
 } from "vexflow";
 import type { ExerciseNote, Exercise } from "../engine/voiceLeading";
@@ -102,6 +101,10 @@ export function ScoreView({ exercise, noteStatuses }: ScoreViewProps) {
     renderer.resize(totalWidth, height);
     const ctx = renderer.getContext();
     ctx.setFont("Arial", 11);
+    // Light grey for stave lines, clef, time signature, and barlines.
+    // Notes override this per-note via setStyle().
+    ctx.setFillStyle("#c8cce8");
+    ctx.setStrokeStyle("#c8cce8");
 
     const trebleY = 20;
     const bassY   = 140;
@@ -124,16 +127,23 @@ export function ScoreView({ exercise, noteStatuses }: ScoreViewProps) {
       }
       bassStave.setContext(ctx).draw();
 
-      // Brace + connecting bar on first measure.
-      if (m === 0) {
-        ctx.save();
-        ctx.setStrokeStyle("#fff");
-        ctx.setFillStyle("#fff");
-        ctx.beginPath();
-        ctx.moveTo(x, trebleY + 1);
-        ctx.lineTo(x, bassY + 79);
-        ctx.stroke();
-        ctx.restore();
+      // Chord symbol above the treble stave (first note of the measure).
+      const chordNote = (byMeasure[m] ?? []).find(
+        (n) => n.staff === "treble" && n.beat === 0 && n.chordSymbol
+      );
+      if (chordNote?.chordSymbol) {
+        const svg = el.querySelector("svg");
+        if (svg) {
+          const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          txt.setAttribute("x", String(x + 10));
+          txt.setAttribute("y", String(trebleY - 4));
+          txt.setAttribute("fill", "#9ba8e0");
+          txt.setAttribute("font-size", "11");
+          txt.setAttribute("font-family", "Arial");
+          txt.setAttribute("font-weight", "bold");
+          txt.textContent = `${chordNote.chordSymbol}  (${chordNote.romanNumeral})`;
+          svg.appendChild(txt);
+        }
       }
 
       // Build VexFlow notes for this measure.
@@ -158,7 +168,8 @@ export function ScoreView({ exercise, noteStatuses }: ScoreViewProps) {
           vn.addModifier(new Accidental(accidental), 0);
         }
 
-        // Fingering annotation.
+        // Fingering annotation (shown above treble notes, below bass notes).
+        // Annotation extends Modifier in VexFlow 4; cast via any for TS.
         const fingerAnn = new Annotation(String(en.finger))
           .setFont("Arial", 10)
           .setVerticalJustification(
@@ -166,16 +177,8 @@ export function ScoreView({ exercise, noteStatuses }: ScoreViewProps) {
               ? Annotation.VerticalJustify.TOP
               : Annotation.VerticalJustify.BOTTOM
           );
-        vn.addModifier(fingerAnn as unknown as Modifier, 0);
-
-        // Chord symbol + Roman numeral (beat 0 only, treble).
-        if (en.staff === "treble" && en.beat === 0 && en.chordSymbol) {
-          const chordAnn = new Annotation(`${en.chordSymbol} (${en.romanNumeral})`)
-            .setFont("Arial", 10, "bold")
-            .setVerticalJustification(Annotation.VerticalJustify.TOP);
-          // Attach above the stave — positioned via y-offset below.
-          vn.addModifier(chordAnn as unknown as Modifier, 0);
-        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        vn.addModifier(fingerAnn as any, 0);
 
         // Apply colour.
         vn.setStyle({ fillStyle: colour, strokeStyle: colour });

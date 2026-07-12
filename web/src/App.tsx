@@ -47,13 +47,15 @@ export default function App() {
 
   const cn = currentNote(exState);
   const isComplete = exState.exerciseComplete;
+  // "keyboard connected" = MIDI started AND at least one source present.
+  const keyboardConnected = midiState.running && midiState.sources.length > 0;
 
   return (
     <div className="app-root">
       {/* Tap-to-begin overlay (absorbs the iOS system gesture gate) */}
-      {!midiState.running && (
+      {!keyboardConnected && (
         <div className="tap-overlay">
-          <p>Connect your MIDI keyboard, then tap anywhere to begin.</p>
+          <p>Connect your MIDI keyboard to begin.</p>
           <p className="tap-hint">
             {midiState.sources.length > 0
               ? `Keyboard detected: ${midiState.sources[0]}`
@@ -114,8 +116,8 @@ export default function App() {
 
           <div className="sidebar-section">
             <div className="sidebar-title">MIDI</div>
-            <div className={`midi-status ${midiState.running ? "ok" : "off"}`}>
-              {midiState.running
+          <div className={`midi-status ${keyboardConnected ? "ok" : "off"}`}>
+              {keyboardConnected
                 ? midiState.activeSource ?? "Connected"
                 : "No MIDI"}
             </div>

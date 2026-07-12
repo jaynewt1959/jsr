@@ -149,17 +149,11 @@ export function generateCMajorExercise(): Exercise {
       finger: assignFingering(chord.root, "left", chord.root),
       measure: m,
       beat: 0,
-      chordSymbol: chord.symbol,
-      romanNumeral: chord.roman,
     });
 
-    // --- Treble staff: Q Q H melody ---
-    // Beat 0: soprano pitch
-    // Beat 1: step down or stay (passing tone from soprano toward next chord)
-    // Beat 2–3: half note at soprano (creates rest / arrival feeling)
     const step1 = soprano;
-    const step2 = soprano - 2 < SOPRANO_MIN ? soprano + 2 : soprano - 2; // simple step
-    const step3 = soprano; // half note = beats 2 and 3
+    const step2 = soprano - 2 < SOPRANO_MIN ? soprano + 2 : soprano - 2;
+    const step3 = soprano;
 
     const treblePattern: Array<{ pitch: number; duration: Duration; beat: number }> = [
       { pitch: step1, duration: "q", beat: 0 },
@@ -175,6 +169,9 @@ export function generateCMajorExercise(): Exercise {
         finger: assignFingering(tp.pitch, "right", chord.root),
         measure: m,
         beat: tp.beat,
+        // Chord symbol shown above the first note of each measure.
+        chordSymbol: tp.beat === 0 ? chord.symbol : undefined,
+        romanNumeral: tp.beat === 0 ? chord.roman : undefined,
       });
     }
 
@@ -213,8 +210,6 @@ function generateCMajorExerciseFrom(firstSoprano: number): Exercise {
       finger: assignFingering(chord.root, "left", chord.root),
       measure: m,
       beat: 0,
-      chordSymbol: chord.symbol,
-      romanNumeral: chord.roman,
     });
 
     const step2 = soprano - 2 < SOPRANO_MIN ? soprano + 2 : soprano - 2;
@@ -231,6 +226,8 @@ function generateCMajorExerciseFrom(firstSoprano: number): Exercise {
         finger: assignFingering(tp.pitch, "right", chord.root),
         measure: m,
         beat: tp.beat,
+        chordSymbol: tp.beat === 0 ? chord.symbol : undefined,
+        romanNumeral: tp.beat === 0 ? chord.roman : undefined,
       });
     }
 
