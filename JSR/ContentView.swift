@@ -75,9 +75,7 @@ struct ContentView: View {
                 }
             }
 
-            if !appState.midiConnected {
-                midiOverlay
-            }
+            // MIDI banner in sidebar only — don't block the score.
         }
     }
 
@@ -225,16 +223,21 @@ struct ContentView: View {
                     .background(Color.green)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 } else {
-                    HStack {
-                        Image(systemName: "pianokeys")
-                        Text("No keyboard")
+                    // Not connected: amber warning banner
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("No keyboard")
+                                .font(.system(size: 14, weight: .heavy))
+                            Text("Connect to begin")
+                                .font(.system(size: 12))
+                        }
                     }
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(.black)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(white: 0.2))
+                    .background(Color.orange)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
             }
@@ -333,9 +336,11 @@ struct ScoreWebView: UIViewRepresentable {
         cfg.mediaTypesRequiringUserActionForPlayback = []
 
         let wv = WKWebView(frame: .zero, configuration: cfg)
-        // Dark navy behind the score card — matches app background
-        wv.backgroundColor = UIColor(red: 0.051, green: 0.063, blue: 0.208, alpha: 1)
-        wv.isOpaque = false
+        // Opaque white — the score renders dark ink on white, like paper.
+        // This beats any CSS trickery; the WKWebView IS white.
+        wv.isOpaque = true
+        wv.backgroundColor = .white
+        wv.scrollView.backgroundColor = .white
         wv.allowsLinkPreview = false
         wv.scrollView.isScrollEnabled = false
         wv.scrollView.delaysContentTouches = false

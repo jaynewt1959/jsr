@@ -1,19 +1,8 @@
-/* App.css - Jay's Sight Reading
-   React renders only the VexFlow score. All chrome is SwiftUI. */
+/* App.css - JSR score view only. WKWebView is opaque white so
+   body background is irrelevant, but set white for safety. */
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
-html, body, #root {
-  width: 100%;
-  height: 100%;
-  background: transparent;
-  overflow: hidden;
-}
+html, body, #root { background: #ffffff; }
 
-.score-root {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: flex-start;
-  padding: 16px;
-}
+.score-root { padding: 16px; }
