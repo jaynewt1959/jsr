@@ -1,77 +1,63 @@
 /**
  * ScoreView.tsx — Jay's Sight Reading
  *
- * Renders a grand staff (treble + bass) exercise using VexFlow 4.x.
- * Shows fingering numbers above/below notes and chord symbols with
- * Roman numerals above the treble staff.
+ * Renders a grand staff exercise using VexFlow 5 Factory + EasyScore API.
+ * This replaces the broken low-level VexFlow 4 renderer.  The Factory /
+ * EasyScore path correctly handles a quarter rest on beat 0 followed by
+ * three quarter notes in a 4/4 grand staff — which the old low-level API
+ * could not render reliably.
  *
- * Note colouring:
- *   current  → blue (#3b9dff)
- *   correct  → grey (#777)
- *   wrong    → red (#e03c3c)
- *   pending  → white (#eee)
+ * Layout (one System per measure, left-to-right):
+ *   Treble: quarter rest (beat 0) + three quarter notes (beats 1–3)
+ *   Bass:   whole note (chord root, beat 0)
+ *
+ * Note colouring (applied via VexFlow setStyle before voice formatting):
+ *   pending → near-black  (#1a1a2a)
+ *   current → blue        (#1060c8)
+ *   correct → grey        (#aaaaaa)
+ *   wrong   → red         (#cc1f1f)
  */
 
 import { useEffect, useRef } from "react";
-import {
-  Renderer,
-  Stave,
-  StaveNote,
-  Voice,
-  Formatter,
-  Annotation,
-  Accidental,
-} from "vexflow";
+import { Factory, Annotation, Barline } from "vexflow";
 import type { ExerciseNote, Exercise } from "../engine/voiceLeading";
 import type { NoteStatus } from "../engine/exerciseEngine";
 
-// ---------------------------------------------------------------------------
-// MIDI → VexFlow note name conversion
-// ---------------------------------------------------------------------------
-
-const NOTE_NAMES = ["c", "d", "e", "f", "g", "a", "b"];
-const SEMITONES  = [0, 2, 4, 5, 7, 9, 11];
-
-/** Convert MIDI pitch to { keys: string[], accidental?: string }.
- *  Only natural notes for C major Phase 1. */
-function midiToVex(midi: number): { keys: string[]; accidental?: string } {
-  const octave = Math.floor(midi / 12) - 1;
-  const pc = midi % 12;
-  const idx = SEMITONES.indexOf(pc);
-
-  if (idx >= 0) {
-    return { keys: [`${NOTE_NAMES[idx]}/${octave}`] };
-  }
-
-  // Sharp: find the note a semitone below and add a #.
-  const lowerIdx = SEMITONES.indexOf(pc - 1);
-  if (lowerIdx >= 0) {
-    return {
-      keys: [`${NOTE_NAMES[lowerIdx]}/${octave}`],
-      accidental: "#",
-    };
-  }
-
-  // Fallback: middle C
-  return { keys: ["c/4"] };
-}
-
-// ---------------------------------------------------------------------------
-// Colour map
-// ---------------------------------------------------------------------------
-
-// Notes on a light (cream) background — dark ink + coloured highlights.
+// ── colours ──────────────────────────────────────────────────────────────
 const STATUS_COLOUR: Record<NoteStatus, string> = {
-  pending: "#1a1a2a",  // near-black ink
-  current: "#1060c8",  // clear blue
-  correct: "#aaaaaa",  // faded grey (already played)
-  wrong:   "#cc1f1f",  // red
+  pending: "#1a1a2a",
+  current: "#1060c8",
+  correct: "#aaaaaa",
+  wrong:   "#cc1f1f",
 };
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
+// ── MIDI → EasyScore ──────────────────────────────────────────────────────
+const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 
+function midiToEasyScore(midi: number, duration: string): string {
+  const octave = Math.floor(midi / 12) - 1;
+  return `${NOTE_NAMES[midi % 12]}${octave}/${duration}`;
+}
+
+// ── layout constants (aligned with vexflow-sandbox/GrandStaff.js) ─────────
+//
+// NATURAL_NOTE_START_BASE: empirical offset from stave left to VexFlow's
+//   natural first-note position for C major (no key signature).
+//   Derived from sandbox experiments: 115 (old base overhead) – 25 (old pad) = 90.
+const NATURAL_NOTE_START_BASE = 90;
+const SMALL_PAD    = 8;   // breathing room between time-sig and first note (px)
+const RIGHT_MARGIN = 20;  // right canvas margin (px)
+const START_X      = 40;  // left margin for the grand-staff brace
+
+// First-measure header width: clef + time-sig + pad.
+// C major has no key signature so no extra accidental width.
+const MEASURE1_HEADER = NATURAL_NOTE_START_BASE + SMALL_PAD;  // 98 px
+
+// Fixed canvas size — fits 4 measures on an iPad in landscape.
+const CANVAS_WIDTH  = 970;
+const CANVAS_HEIGHT = 280;
+
+// ── component ─────────────────────────────────────────────────────────────
 interface ScoreViewProps {
   exercise: Exercise;
   noteStatuses: NoteStatus[];
@@ -79,163 +65,155 @@ interface ScoreViewProps {
 
 export function ScoreView({ exercise, noteStatuses }: ScoreViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  // Stable element ID — Factory needs document.getElementById.
+  const elementId = useRef(`jsrscore-${Math.random().toString(36).slice(2, 9)}`).current;
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+
+    el.id        = elementId;
     el.innerHTML = "";
 
-    const notes = exercise.notes;
+    const allNotes     = exercise.notes;
+    const measureCount = Math.max(0, ...allNotes.map((n) => n.measure)) + 1;
 
-    // Group notes by measure.
-    const measureCount = Math.max(0, ...notes.map((n) => n.measure)) + 1;
     const byMeasure: ExerciseNote[][] = Array.from({ length: measureCount }, () => []);
-    notes.forEach((n) => byMeasure[n.measure].push(n));
+    allNotes.forEach((n) => byMeasure[n.measure].push(n));
 
-    // Canvas dimensions.
-    const staveWidth  = 220;
-    const staveMargin = 60;
-    const totalWidth  = staveMargin + measureCount * staveWidth + 30;
-    const height      = 260;
+    // Note area per measure derived from fixed canvas width.
+    const noteAreaWidth =
+      (CANVAS_WIDTH - START_X - MEASURE1_HEADER - RIGHT_MARGIN) / measureCount;
 
-    const renderer = new Renderer(el, Renderer.Backends.SVG);
-    renderer.resize(totalWidth, height);
+    // ── VexFlow Factory + EasyScore ────────────────────────────────────────
+    const factory = new Factory({
+      renderer: { elementId, width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
+    });
+    const score = factory.EasyScore();
 
-    // Force a white background on the SVG element directly.
-    // CSS background on the containing div is unreliable because VexFlow's
-    // SVG is transparent and the WKWebView background shows through.
-    const svgEl = el.querySelector("svg");
-    if (svgEl) {
-      const bgRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-      bgRect.setAttribute("width", "100%");
-      bgRect.setAttribute("height", "100%");
-      bgRect.setAttribute("fill", "#ffffff");
-      svgEl.insertBefore(bgRect, svgEl.firstChild);
-    }
-
-    const ctx = renderer.getContext();
-    ctx.setFont("Arial", 11);
-    ctx.setFillStyle("#1a1a2a");
-    ctx.setStrokeStyle("#1a1a2a");
-
-    const trebleY = 20;
-    const bassY   = 140;
+    const staveXPos: number[] = [];  // stave left-edge x per measure
+    let x = START_X;
 
     for (let m = 0; m < measureCount; m++) {
-      const x = staveMargin + m * staveWidth;
-      const w = staveWidth;
+      const isFirst = m === 0;
+      const isFinal = m === measureCount - 1;
+      const width   = isFirst ? MEASURE1_HEADER + noteAreaWidth : noteAreaWidth;
+      staveXPos.push(x);
 
-      // Treble stave
-      const trebleStave = new Stave(x, trebleY, w);
-      if (m === 0) {
-        trebleStave.addClef("treble").addTimeSignature("4/4");
-      }
-      trebleStave.setContext(ctx).draw();
+      const sys    = factory.System({ x, y: 40, width });
+      const mNotes = byMeasure[m] ?? [];
+      const tSrc   = mNotes.filter((n) => n.staff === "treble");
+      const bSrc   = mNotes.filter((n) => n.staff === "bass");
 
-      // Bass stave
-      const bassStave = new Stave(x, bassY, w);
-      if (m === 0) {
-        bassStave.addClef("bass").addTimeSignature("4/4");
-      }
-      bassStave.setContext(ctx).draw();
+      // ── treble: quarter rest + arpeggio ─────────────────────────────────
+      // Beat 0 is always a visual rest (the engine sequences from the bass
+      // note, so beat 0 treble is not an ExerciseNote).
+      const trebleStr = [
+        "B4/q/r",
+        ...tSrc.map((en) => midiToEasyScore(en.pitch, en.duration)),
+      ].join(", ");
 
-      // Chord symbol above the treble stave (first note of the measure).
-      const chordNote = (byMeasure[m] ?? []).find(
-        (n) => n.staff === "treble" && n.beat === 0 && n.chordSymbol
-      );
-      if (chordNote?.chordSymbol) {
-        const svg = el.querySelector("svg");
-        if (svg) {
-          const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
-          txt.setAttribute("x", String(x + 10));
-          txt.setAttribute("y", String(trebleY - 4));
-          txt.setAttribute("fill", "#2a4ea8");
-          txt.setAttribute("font-size", "11");
-          txt.setAttribute("font-family", "Arial");
-          txt.setAttribute("font-weight", "bold");
-          txt.textContent = `${chordNote.chordSymbol}  (${chordNote.romanNumeral})`;
-          svg.appendChild(txt);
-        }
-      }
+      const tVF = score.notes(trebleStr, { stem: "up" });
 
-      // Build VexFlow notes for this measure.
-      const measureNotes = byMeasure[m] ?? [];
-      const trebleVexNotes: StaveNote[] = [];
-      const bassVexNotes:   StaveNote[] = [];
+      // Rest: always ink colour.
+      tVF[0].setStyle({ fillStyle: STATUS_COLOUR.pending, strokeStyle: STATUS_COLOUR.pending });
 
-      for (const en of measureNotes) {
-        // Find the global index to look up the status.
-        const globalIdx = notes.indexOf(en);
-        const status: NoteStatus = noteStatuses[globalIdx] ?? "pending";
-        const colour = STATUS_COLOUR[status];
+      // Exercise notes: colour + finger annotation.
+      tSrc.forEach((en, j) => {
+        const colour = STATUS_COLOUR[noteStatuses[allNotes.indexOf(en)] ?? "pending"];
+        tVF[j + 1].setStyle({ fillStyle: colour, strokeStyle: colour });
+        tVF[j + 1].addModifier(
+          new Annotation(String(en.finger))
+            .setFont("Arial", 9)
+            .setVerticalJustification(Annotation.VerticalJustify.TOP),
+          0,
+        );
+      });
 
-        const { keys, accidental } = midiToVex(en.pitch);
-        const vn = new StaveNote({
-          keys,
-          duration: en.duration,
-          clef: en.staff === "treble" ? "treble" : "bass",
-        });
+      // ── bass: whole note ─────────────────────────────────────────────────
+      const bassStr = bSrc.map((en) => midiToEasyScore(en.pitch, en.duration)).join(", ");
+      const bVF     = score.notes(bassStr, { clef: "bass", stem: "down" });
 
-        if (accidental) {
-          vn.addModifier(new Accidental(accidental), 0);
-        }
+      bSrc.forEach((en, j) => {
+        const colour = STATUS_COLOUR[noteStatuses[allNotes.indexOf(en)] ?? "pending"];
+        bVF[j].setStyle({ fillStyle: colour, strokeStyle: colour });
+        bVF[j].addModifier(
+          new Annotation(String(en.finger))
+            .setFont("Arial", 9)
+            .setVerticalJustification(Annotation.VerticalJustify.BOTTOM),
+          0,
+        );
+      });
 
-        // Fingering annotation (shown above treble notes, below bass notes).
-        // Annotation extends Modifier in VexFlow 4; cast via any for TS.
-        const fingerAnn = new Annotation(String(en.finger))
-          .setFont("Arial", 10)
-          .setVerticalJustification(
-            en.staff === "treble"
-              ? Annotation.VerticalJustify.TOP
-              : Annotation.VerticalJustify.BOTTOM
-          );
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        vn.addModifier(fingerAnn as any, 0);
+      // ── add staves to system ─────────────────────────────────────────────
+      const treble = sys.addStave({ voices: [score.voice(tVF, { time: "4/4" })] });
+      const bass   = sys.addStave({ voices: [score.voice(bVF, { time: "4/4" })] });
 
-        // Apply colour.
-        vn.setStyle({ fillStyle: colour, strokeStyle: colour });
-
-        if (en.staff === "treble") {
-          trebleVexNotes.push(vn);
-        } else {
-          bassVexNotes.push(vn);
-        }
+      if (isFirst) {
+        treble.addClef("treble").addTimeSignature("4/4");
+        bass.addClef("bass").addTimeSignature("4/4");
+        treble.setNoteStartX(treble.getNoteStartX() + SMALL_PAD);
+        bass.setNoteStartX(bass.getNoteStartX() + SMALL_PAD);
+        sys.addConnector("brace");
+        sys.addConnector("singleLeft");
       }
 
-      // Pad bass voice to 4 beats if it only has a whole-note.
-      // VexFlow needs full-measure voices.
-      const trebleVoice = new Voice({ numBeats: 4, beatValue: 4 });
-      trebleVoice.setMode(Voice.Mode.SOFT);
-      if (trebleVexNotes.length) trebleVoice.addTickables(trebleVexNotes);
-
-      const bassVoice = new Voice({ numBeats: 4, beatValue: 4 });
-      bassVoice.setMode(Voice.Mode.SOFT);
-      if (bassVexNotes.length) bassVoice.addTickables(bassVexNotes);
-
-      const formatter = new Formatter();
-      const voices = [];
-      if (trebleVexNotes.length) voices.push(trebleVoice);
-      if (bassVexNotes.length)   voices.push(bassVoice);
-
-      if (voices.length) {
-        formatter.joinVoices(voices).format(voices, w - 20);
-        if (trebleVexNotes.length) trebleVoice.draw(ctx, trebleStave);
-        if (bassVexNotes.length)   bassVoice.draw(ctx, bassStave);
+      if (isFinal) {
+        treble.setEndBarType(Barline.type.END);
+        bass.setEndBarType(Barline.type.END);
+        sys.addConnector("boldDoubleRight");
+      } else {
+        sys.addConnector("singleRight");
       }
+
+      x += width;
     }
-  }, [exercise, noteStatuses]);
+
+    factory.draw();
+
+    // ── SVG post-processing ───────────────────────────────────────────────
+    const svg = el.querySelector("svg");
+    if (!svg) return;
+
+    // White background — WKWebView shows through a transparent SVG.
+    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    bg.setAttribute("width",  "100%");
+    bg.setAttribute("height", "100%");
+    bg.setAttribute("fill",   "#ffffff");
+    svg.insertBefore(bg, svg.firstChild);
+
+    // Chord symbols above the treble stave (e.g. "C  (I)").
+    byMeasure.forEach((mNotes, m) => {
+      const cn = mNotes.find((n) => n.staff === "treble" && n.chordSymbol);
+      if (!cn?.chordSymbol) return;
+
+      // On measure 0 place symbol after the clef/time-sig; elsewhere at stave left.
+      const cx = m === 0 ? staveXPos[0] + MEASURE1_HEADER + 8 : staveXPos[m] + 8;
+
+      const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      txt.setAttribute("x",           String(cx));
+      txt.setAttribute("y",           "30");
+      txt.setAttribute("fill",        "#2a4ea8");
+      txt.setAttribute("font-size",   "11");
+      txt.setAttribute("font-family", "Arial");
+      txt.setAttribute("font-weight", "bold");
+      txt.textContent = `${cn.chordSymbol}  (${cn.romanNumeral})`;
+      svg.appendChild(txt);
+    });
+
+  }, [exercise, noteStatuses, elementId]);
 
   return (
     <div
       ref={containerRef}
       style={{
-        background: "#ffffff",
+        background:   "#ffffff",
         borderRadius: 10,
-        padding: "16px 10px 10px",
-        overflowX: "auto",
-        width: "100%",
-        border: "2px solid #d0d8f8",
-        boxShadow: "0 4px 24px rgba(30,40,120,0.22)",
+        padding:      "16px 10px 10px",
+        overflowX:    "auto",
+        width:        "100%",
+        border:       "2px solid #d0d8f8",
+        boxShadow:    "0 4px 24px rgba(30,40,120,0.22)",
       }}
     />
   );
