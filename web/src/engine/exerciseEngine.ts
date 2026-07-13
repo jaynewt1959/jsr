@@ -98,12 +98,11 @@ function handleNotePlayed(state: ExerciseState, midiNote: number): ExerciseState
   const isCorrect = midiNote === expected.pitch;
 
   if (!isCorrect) {
-    // Mark wrong — stay on the same note.
-    const newStatuses = [...state.noteStatuses];
-    newStatuses[state.currentNoteIndex] = "wrong";
+    // Stay on the same note. Keep its status "current" (blue) so the
+    // header banner "play the blue note" is accurate — the target note
+    // must remain visually identifiable. wrongNoteActive drives the banner.
     return {
       ...state,
-      noteStatuses: newStatuses,
       wrongNoteActive: true,
       mistakeThisRun: true,
       wrongNotePlayed: midiNote,

@@ -63,19 +63,14 @@ struct ContentView: View {
     @ViewBuilder
     private func mainLayout(port: Int) -> some View {
         ZStack {
-            Color(hex: "0d1035").ignoresSafeArea()  // deep ocean navy
+            Color(hex: "0d1035").ignoresSafeArea()
 
             VStack(spacing: 0) {
                 headerBar
-                HStack(spacing: 0) {
-                    ScoreWebView(port: port, appState: appState)
-                    sidebar
-                        .frame(width: 220)
-                        .background(Color(hex: "111430"))  // slightly lighter navy
-                }
+                ScoreWebView(port: port, appState: appState)
+                controlBar
+                    .background(Color(hex: "111430"))
             }
-
-            // MIDI banner in sidebar only — don't block the score.
         }
     }
 
@@ -120,131 +115,111 @@ struct ContentView: View {
         .background(Color(hex: "0d1035"))
     }
 
-    // MARK: - Sidebar
-    //
-    // Principle: every element has maximum contrast.
-    //   - All text: .white (never dim grey)
-    //   - Buttons: solid opaque system colours (blue, green)
-    //   - Backgrounds: opaque dark, never translucent
+    // MARK: - Control bar (below score)
 
-    private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 0) {
+    private var controlBar: some View {
+        HStack(spacing: 0) {
 
-            // ─ PASSES ───────────────────
-            VStack(alignment: .leading, spacing: 6) {
-                Text("PASSES")
-                    .font(.system(size: 11, weight: .heavy))
-                    .tracking(2)
-                    .foregroundColor(.white)
-
-                HStack(alignment: .lastTextBaseline, spacing: 6) {
-                    Text("\(appState.passCount)")
-                        .font(.system(size: 52, weight: .heavy, design: .rounded))
-                        .foregroundColor(.yellow)
-                        .monospacedDigit()
-                    Text("/ 3")
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .foregroundColor(.white)
-                }
-
-                HStack(spacing: 10) {
-                    ForEach(0..<3, id: \.self) { i in
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(i < appState.passCount ? Color.yellow : Color.white.opacity(0.3))
-                            .frame(width: 36, height: 8)
+            // ─ PASSES ───────────────────────────────────────────────
+            HStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("PASS")
+                        .font(.system(size: 10, weight: .heavy))
+                        .tracking(2)
+                        .foregroundColor(.white.opacity(0.6))
+                    HStack(alignment: .lastTextBaseline, spacing: 4) {
+                        Text("\(min(appState.passCount + 1, 3))")
+                            .font(.system(size: 32, weight: .heavy, design: .rounded))
+                            .foregroundColor(.yellow)
+                            .monospacedDigit()
+                        Text("/ 3")
+                            .font(.system(size: 16, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
                     }
                 }
-
-                Text("Exercise \((appState.exerciseIndex % 5) + 1) of 5")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        ForEach(0..<3, id: \.self) { i in
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(i < appState.passCount ? Color.yellow : Color.white.opacity(0.25))
+                                .frame(width: 28, height: 6)
+                        }
+                    }
+                    Text("Exercise \((appState.exerciseIndex % 5) + 1) of 5")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.7))
+                }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 16)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
 
-            Color.white.opacity(0.2).frame(height: 1).padding(.horizontal, 16)
+            Divider().background(Color.white.opacity(0.2)).frame(height: 48)
 
-            // ─ BUTTONS ─────────────────
-            VStack(spacing: 10) {
-                // Next exercise — solid green, shown on completion
+            // ─ BUTTONS ──────────────────────────────────────────────
+            HStack(spacing: 10) {
                 if appState.exerciseComplete {
                     Button(action: { appState.nextExercise() }) {
-                        HStack {
-                            Spacer()
-                            Image(systemName: "arrow.right.circle.fill")
-                            Text("Next exercise")
-                            Spacer()
-                        }
-                        .font(.system(size: 16, weight: .heavy))
-                        .foregroundColor(.black)
-                        .padding(.vertical, 14)
-                        .background(Color.green)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        Label("Next", systemImage: "arrow.right.circle.fill")
+                            .font(.system(size: 15, weight: .heavy))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 10)
+                            .background(Color.green)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
                 }
-
-                // Restart — solid blue, always visible
                 Button(action: { appState.restart() }) {
-                    HStack {
-                        Spacer()
-                        Image(systemName: "arrow.counterclockwise")
-                        Text("Restart")
-                        Spacer()
-                    }
-                    .font(.system(size: 16, weight: .heavy))
-                    .foregroundColor(.white)
-                    .padding(.vertical, 14)
-                    .background(Color.blue)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    Label("Restart", systemImage: "arrow.counterclockwise")
+                        .font(.system(size: 15, weight: .heavy))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 10)
+                        .background(Color.blue)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 16)
+            .padding(.vertical, 12)
 
-            Color.white.opacity(0.2).frame(height: 1).padding(.horizontal, 16)
+            Spacer()
 
-            // ─ MIDI ────────────────────
-            VStack(alignment: .leading, spacing: 8) {
-                Text("MIDI")
-                    .font(.system(size: 11, weight: .heavy))
-                    .tracking(2)
-                    .foregroundColor(.white)
+            Divider().background(Color.white.opacity(0.2)).frame(height: 48)
 
+            // ─ MIDI ─────────────────────────────────────────────────
+            Group {
                 if appState.midiConnected {
                     Label(
                         appState.midiSourceName.isEmpty ? "Connected" : appState.midiSourceName,
                         systemImage: "pianokeys.fill"
                     )
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(.black)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
                     .background(Color.green)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
                 } else {
-                    // Not connected: amber warning banner
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("No keyboard")
-                                .font(.system(size: 14, weight: .heavy))
-                            Text("Connect to begin")
-                                .font(.system(size: 12))
+                    Button(action: { Task { await EngineHost.shared.refreshMidi() } }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("No keyboard")
+                                    .font(.system(size: 13, weight: .heavy))
+                                Text("Tap to scan")
+                                    .font(.system(size: 11))
+                            }
                         }
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Color.orange)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
-                    .foregroundColor(.black)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.orange)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 16)
-
-            Spacer()
+            .padding(.vertical, 12)
         }
     }
 

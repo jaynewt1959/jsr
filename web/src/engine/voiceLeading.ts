@@ -1,26 +1,23 @@
 /**
  * voiceLeading.ts — Jay's Sight Reading
  *
- * Generates piano exercises from chord progressions using classical
- * voice-leading rules:
- *   1. Keep common tones between chords in the same voice.
- *   2. Move other voices by the smallest interval (prefer step over leap).
- *   3. Avoid parallel fifths/octaves.
+ * Generates piano exercises using economy-of-movement voice leading.
+ * For each chord in the progression the engine selects the inversion
+ * (root / 1st / 2nd) whose three voices travel the fewest semitones
+ * in total from the previous chord.  Common tones stay put; others
+ * move by the smallest available step.  This mirrors classical four-
+ * part writing and produces naturally pleasing melodic movement.
  *
- * Output: a flat sequence of ExerciseNotes ready to drive the score
- * renderer and the exercise engine.
+ * Right hand (treble): broken arpeggio — bottom note (q), middle (q),
+ *   top note (h).  Every note is a genuine chord tone.
+ * Left hand (bass): chord root as a whole note, finger 5 (pinky).
  *
- * Phase 1: C major only, I–vi–IV–V progression, quarter-note melody
- * in the treble + whole-note bass root. The melody soprano voice is
- * derived by finding the chord tone closest to the previous soprano,
- * keeping common tones wherever possible.
+ * Example — I–vi–IV–V in C major, starting in root position:
+ *   C  → C E G  (root,     fingers 1-3-5)
+ *   Am → C E A  (1st inv,  fingers 1-2-5)   G stays → A, only +2
+ *   F  → C F A  (2nd inv,  fingers 1-3-5)   E→F only +1, rest stay
+ *   G  → D G B  (2nd inv,  fingers 1-3-5)   each voice moves by 2
  */
-
-import { assignFingering } from "./fingering";
-
-// ---------------------------------------------------------------------------
-// Data types
-// ---------------------------------------------------------------------------
 
 export type Staff = "treble" | "bass";
 export type Duration = "w" | "h" | "q";
@@ -28,28 +25,21 @@ export type Duration = "w" | "h" | "q";
 export interface ExerciseNote {
   /** MIDI pitch (0–127). Middle C = 60. */
   pitch: number;
-  /** VexFlow duration string: 'w' | 'h' | 'q'. */
   duration: Duration;
-  /** Which staff this note belongs to. */
   staff: Staff;
-  /** Finger 1–5, derived from scale fingering tables. */
+  /** Finger 1–5. */
   finger: number;
-  /** Measure index (0-based). */
+  /** 0-based measure index. */
   measure: number;
-  /** Beat within the measure (0-based quarter-beat index). */
+  /** 0-based beat within the measure. */
   beat: number;
-  /** Chord symbol to display, e.g. "C" — set only on beat 0. */
   chordSymbol?: string;
-  /** Roman numeral, e.g. "I" — set only on beat 0. */
   romanNumeral?: string;
 }
 
 export interface Exercise {
-  /** Notes in the order the player must produce them. */
   notes: ExerciseNote[];
-  /** Key name (e.g. "C major") */
   key: string;
-  /** Time signature numerator (always 4 for Phase 1). */
   beatsPerMeasure: number;
 }
 
@@ -57,182 +47,211 @@ export interface Exercise {
 // Chord definitions
 // ---------------------------------------------------------------------------
 
-/** A chord specified as a root MIDI pitch and its intervals in semitones. */
-interface ChordSpec {
-  root: number;         // MIDI note of the root
-  intervals: number[];  // semitone intervals above root, ascending
-  symbol: string;       // e.g. "C"
-  roman: string;        // e.g. "I"
+const MAJOR = [0, 4, 7] as const;
+const MINOR = [0, 3, 7] as const;
+
+interface ChordDef {
+  /** Root pitch class: 0 = C … 11 = B. */
+  pitchClass: number;
+  intervals: readonly number[];
+  /** MIDI note for the LH bass whole note. */
+  bassRoot: number;
+  symbol: string;
+  roman: string;
 }
 
-/** C major diatonic chords in root position, voiced in octave 4/5. */
-const C_MAJOR_CHORDS: ChordSpec[] = [
-  { root: 48, intervals: [0, 4, 7],  symbol: "C",  roman: "I"   }, // C3
-  { root: 45, intervals: [0, 3, 7],  symbol: "Am", roman: "vi"  }, // A2
-  { root: 53, intervals: [0, 5, 9],  symbol: "F",  roman: "IV"  }, // F3
-  { root: 55, intervals: [0, 4, 7],  symbol: "G",  roman: "V"   }, // G3
+/** I – vi – IV – V in C major. */
+const C_MAJOR_PROGRESSION: ChordDef[] = [
+  { pitchClass: 0, intervals: MAJOR, bassRoot: 48, symbol: "C",  roman: "I"  }, // C3
+  { pitchClass: 9, intervals: MINOR, bassRoot: 45, symbol: "Am", roman: "vi" }, // A2
+  { pitchClass: 5, intervals: MAJOR, bassRoot: 53, symbol: "F",  roman: "IV" }, // F3
+  { pitchClass: 7, intervals: MAJOR, bassRoot: 55, symbol: "G",  roman: "V"  }, // G3
 ];
 
-/** Returns the absolute MIDI pitches for all tones of the chord
- *  in the octave(s) spanning the given register. */
-function chordTones(spec: ChordSpec): number[] {
-  return spec.intervals.map((i) => spec.root + i);
-}
+// ---------------------------------------------------------------------------
+// Voicing engine
+// ---------------------------------------------------------------------------
 
-/** Treble soprano register: prefer notes in the range E4–E5 (MIDI 64–76). */
-const SOPRANO_MIN = 60; // C4
-const SOPRANO_MAX = 79; // G5
+/** Three MIDI pitches in ascending order. */
+type Voicing = [number, number, number];
 
-/** For a given chord, find the soprano pitch closest to the previous soprano,
- *  keeping common tones in the same voice when possible. */
-function chooseSoprano(chord: ChordSpec, prevSoprano: number): number {
-  const tones = chordTones(chord);
+/** Comfortable right-hand soprano register. */
+const TREBLE_MIN = 60; // C4
+const TREBLE_MAX = 84; // C6
 
-  // All chord tones in all relevant octaves within the soprano range.
-  const candidates: number[] = [];
-  for (const t of tones) {
-    // Walk up octaves until we exceed the range.
-    let p = t;
-    while (p < SOPRANO_MIN) p += 12;
-    while (p <= SOPRANO_MAX) {
-      candidates.push(p);
-      p += 12;
+/**
+ * Generate every close-position voicing of `chord` that fits within
+ * [TREBLE_MIN, TREBLE_MAX].  All three inversions are tried at every
+ * possible octave position within the range.
+ */
+function getAllVoicings(chord: ChordDef): Voicing[] {
+  const result: Voicing[] = [];
+  const pcs = chord.intervals.map(i => (chord.pitchClass + i) % 12);
+
+  for (let inv = 0; inv < 3; inv++) {
+    const lowestPC = pcs[inv];
+
+    for (let base = TREBLE_MIN; base <= TREBLE_MAX; base++) {
+      if (base % 12 !== lowestPC) continue;
+
+      // Walk upward from base, snapping to each successive pitch class.
+      let p = base;
+      const notes: number[] = [p];
+      for (let j = 1; j < 3; j++) {
+        const nextPC = pcs[(inv + j) % 3];
+        p++;
+        while (p % 12 !== nextPC) p++;
+        notes.push(p);
+      }
+
+      if (notes[2] <= TREBLE_MAX) {
+        result.push(notes as unknown as Voicing);
+      }
     }
   }
 
-  if (candidates.length === 0) return prevSoprano; // fallback
+  return result;
+}
 
-  // Prefer common tones (same pitch class as prevSoprano).
-  const prevPc = prevSoprano % 12;
-  const commonTones = candidates.filter((p) => p % 12 === prevPc);
-  if (commonTones.length > 0) {
-    // Pick the one closest in pitch.
-    return commonTones.reduce((best, p) =>
-      Math.abs(p - prevSoprano) < Math.abs(best - prevSoprano) ? p : best
-    );
-  }
+/** Total semitone movement between two voicings (voice-by-voice). */
+function totalMovement(a: Voicing, b: Voicing): number {
+  return (
+    Math.abs(a[0] - b[0]) +
+    Math.abs(a[1] - b[1]) +
+    Math.abs(a[2] - b[2])
+  );
+}
 
-  // Otherwise pick the candidate closest in pitch (minimal movement).
-  return candidates.reduce((best, p) =>
-    Math.abs(p - prevSoprano) < Math.abs(best - prevSoprano) ? p : best
+/**
+ * Choose the inversion of `chord` that minimises total voice movement
+ * from `prev`.  Ties are broken by taking the first candidate (root
+ * position preferred, lower octave preferred).
+ */
+function bestVoicing(chord: ChordDef, prev: Voicing): Voicing {
+  const candidates = getAllVoicings(chord);
+  if (candidates.length === 0) return prev;
+  return candidates.reduce((best, v) =>
+    totalMovement(v, prev) < totalMovement(best, prev) ? v : best
   );
 }
 
 // ---------------------------------------------------------------------------
-// Exercise generation
+// Left-hand fingering — single bass root per measure
 // ---------------------------------------------------------------------------
 
 /**
- * Generate a 4-measure exercise in C major from the I–vi–IV–V progression.
- *
- * Structure per measure:
- *   Beat 0 (LH): bass whole note (chord root)
- *   Beat 0–3 (RH): 4 quarter notes — soprano melody derived from voice
- *                  leading, with a half note on beat 2 to create variety.
- *
- * Playing order within a measure: LH bass note first, then RH notes.
+ * Map each bass note to a finger using linear interpolation across the
+ * full pitch range of the progression: lowest note → pinky (5),
+ * highest note → thumb (1).  Economy of movement: higher notes get
+ * lower finger numbers so the hand shifts minimally between chords.
  */
-export function generateCMajorExercise(): Exercise {
+function lhFingering(bassNote: number, allBassNotes: number[]): number {
+  const lo = Math.min(...allBassNotes);
+  const hi = Math.max(...allBassNotes);
+  if (hi === lo) return 3;
+  const t = (bassNote - lo) / (hi - lo); // 0 = lowest, 1 = highest
+  return Math.max(1, Math.min(5, 5 - Math.round(4 * t)));
+}
+
+// ---------------------------------------------------------------------------
+// Right-hand fingering for close-position triads
+// ---------------------------------------------------------------------------
+
+/**
+ * Assign fingers 1, 2-or-3, 5 to a 3-note close-position voicing.
+ *
+ *   Lower interval ≥ 5 (4th or larger at bottom)     → 1-3-5  e.g. C-F-A, D-G-B
+ *   Lower interval = 4 (major 3rd) + upper ≥ 5       → 1-2-5  e.g. C-E-A
+ *   Lower interval = 4 (major 3rd) + upper ≤ 4       → 1-3-5  e.g. C-E-G
+ */
+function rhFingering(voicing: Voicing): [number, number, number] {
+  const lower = voicing[1] - voicing[0];
+  const upper = voicing[2] - voicing[1];
+  if (lower <= 4 && upper >= 5) return [1, 2, 5];
+  return [1, 3, 5];
+}
+
+// ---------------------------------------------------------------------------
+// Exercise builder
+// ---------------------------------------------------------------------------
+
+function buildExercise(
+  progression: ChordDef[],
+  startVoicing: Voicing
+): Exercise {
   const notes: ExerciseNote[] = [];
-  const progression = C_MAJOR_CHORDS;
-  let prevSoprano = 64; // Start on E4 (3rd of C major)
+  let prevVoicing = startVoicing;
+
+  const allBassRoots = progression.map(c => c.bassRoot);
 
   for (let m = 0; m < progression.length; m++) {
     const chord = progression[m];
-    const soprano = chooseSoprano(chord, prevSoprano);
+    const voicing = m === 0 ? startVoicing : bestVoicing(chord, prevVoicing);
+    prevVoicing = voicing;
 
-    // --- Bass staff: whole note on the chord root ---
+    const [f1, f2, f5] = rhFingering(voicing);
+    const lhFinger = lhFingering(chord.bassRoot, allBassRoots);
+
+    // LH: chord root, whole note, plays on beat 1 (during treble rest).
     notes.push({
-      pitch: chord.root,
+      pitch:    chord.bassRoot,
       duration: "w",
-      staff: "bass",
-      finger: assignFingering(chord.root, "left", chord.root),
-      measure: m,
-      beat: 0,
+      staff:    "bass",
+      finger:   lhFinger,
+      measure:  m,
+      beat:     0,
     });
 
-    const step1 = soprano;
-    const step2 = soprano - 2 < SOPRANO_MIN ? soprano + 2 : soprano - 2;
-    const step3 = soprano;
-
-    const treblePattern: Array<{ pitch: number; duration: Duration; beat: number }> = [
-      { pitch: step1, duration: "q", beat: 0 },
-      { pitch: step2, duration: "q", beat: 1 },
-      { pitch: step3, duration: "h", beat: 2 },
+    // RH: beat 1 is a visual rest (rendered by ScoreView).
+    //     Beats 2-4: three quarter notes — the arpeggio.
+    const treble: Array<{
+      pitch: number; duration: Duration; beat: number; finger: number;
+    }> = [
+      { pitch: voicing[0], duration: "q", beat: 1, finger: f1 },
+      { pitch: voicing[1], duration: "q", beat: 2, finger: f2 },
+      { pitch: voicing[2], duration: "q", beat: 3, finger: f5 },
     ];
 
-    for (const tp of treblePattern) {
+    for (const t of treble) {
       notes.push({
-        pitch: tp.pitch,
-        duration: tp.duration,
-        staff: "treble",
-        finger: assignFingering(tp.pitch, "right", chord.root),
-        measure: m,
-        beat: tp.beat,
-        // Chord symbol shown above the first note of each measure.
-        chordSymbol: tp.beat === 0 ? chord.symbol : undefined,
-        romanNumeral: tp.beat === 0 ? chord.roman : undefined,
+        pitch:        t.pitch,
+        duration:     t.duration,
+        staff:        "treble",
+        finger:       t.finger,
+        measure:      m,
+        beat:         t.beat,
+        // Symbol on the first note of each measure (beat 1, not beat 0).
+        chordSymbol:  t.beat === 1 ? chord.symbol : undefined,
+        romanNumeral: t.beat === 1 ? chord.roman  : undefined,
       });
     }
-
-    prevSoprano = soprano;
   }
 
   return { notes, key: "C major", beatsPerMeasure: 4 };
 }
 
 // ---------------------------------------------------------------------------
-// Exercise sequence: 5 exercises, cycling through progressions/inversions
+// Public API — 5-exercise session
 // ---------------------------------------------------------------------------
 
-/** Return the nth exercise (0-indexed, wraps after 5). */
+/**
+ * Four starting voicings of C major, one per inversion (with a higher-
+ * octave root position for variety).  Each starting voicing produces a
+ * distinct sequence of inversions through the rest of the progression.
+ *
+ *   Ex 0: C4-E4-G4  root    → Am: C-E-A  → F: C-F-A  → G: D-G-B
+ *   Ex 1: E4-G4-C5  1st inv → Am: E-A-C  → F: F-A-C  → G: G-B-D
+ *   Ex 2: G4-C5-E5  2nd inv → Am: A-C-E  → F: A-C-F  → G: G-B-D
+ *   Ex 3: C5-E5-G5  root↑   → Am: C-E-A  → F: C-F-A  → G: B-D-G
+ */
+const C_MAJOR_STARTS: Voicing[] = [
+  [60, 64, 67], // C4-E4-G4  root position
+  [64, 67, 72], // E4-G4-C5  first inversion
+  [67, 72, 76], // G4-C5-E5  second inversion
+  [72, 76, 79], // C5-E5-G5  root position (higher)
+];
+
 export function getExercise(index: number): Exercise {
-  // Phase 1 only has one progression style; later phases add variety.
-  // All 5 exercises use the same I–vi–IV–V but with shifting soprano start.
-  const startPitches = [64, 67, 65, 69, 71]; // E4, G4, F4, A4, B4
-  const sp = startPitches[index % startPitches.length];
-  return generateCMajorExerciseFrom(sp);
-}
-
-function generateCMajorExerciseFrom(firstSoprano: number): Exercise {
-  const notes: ExerciseNote[] = [];
-  const progression = C_MAJOR_CHORDS;
-  let prevSoprano = firstSoprano;
-
-  for (let m = 0; m < progression.length; m++) {
-    const chord = progression[m];
-    const soprano = m === 0 ? firstSoprano : chooseSoprano(chord, prevSoprano);
-
-    notes.push({
-      pitch: chord.root,
-      duration: "w",
-      staff: "bass",
-      finger: assignFingering(chord.root, "left", chord.root),
-      measure: m,
-      beat: 0,
-    });
-
-    const step2 = soprano - 2 < SOPRANO_MIN ? soprano + 2 : soprano - 2;
-    const treblePattern: Array<{ pitch: number; duration: Duration; beat: number }> = [
-      { pitch: soprano, duration: "q", beat: 0 },
-      { pitch: step2,   duration: "q", beat: 1 },
-      { pitch: soprano, duration: "h", beat: 2 },
-    ];
-    for (const tp of treblePattern) {
-      notes.push({
-        pitch: tp.pitch,
-        duration: tp.duration,
-        staff: "treble",
-        finger: assignFingering(tp.pitch, "right", chord.root),
-        measure: m,
-        beat: tp.beat,
-        chordSymbol: tp.beat === 0 ? chord.symbol : undefined,
-        romanNumeral: tp.beat === 0 ? chord.roman : undefined,
-      });
-    }
-
-    prevSoprano = soprano;
-  }
-
-  return { notes, key: "C major", beatsPerMeasure: 4 };
+  const start = C_MAJOR_STARTS[index % C_MAJOR_STARTS.length];
+  return buildExercise(C_MAJOR_PROGRESSION, start);
 }

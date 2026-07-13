@@ -26,6 +26,21 @@ actor MidiCoordinator {
         midi.setSourcesChangedHandler { [weak self] in
             Task { await self?.broadcastMidiState() }
         }
+
+        // Periodic fallback: re-scan sources every 2 s while MIDI is
+        // running but no keyboard is visible. Hot-plug notifications on
+        // iOS are sometimes delayed or missed, so polling fills the gap.
+        Task { [weak self] in
+            while true {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                guard let self else { return }
+                if midi.isRunning() && midi.currentSourceNames().isEmpty {
+                    midi.refresh()
+                    await broadcastMidiState()
+                }
+            }
+        }
+
         for await event in midi.events() {
             await broadcastNoteEvent(event)
         }
@@ -36,6 +51,13 @@ actor MidiCoordinator {
     func startMidi() {
         midi.flushPending()
         midi.start()
+        Task { await broadcastMidiState() }
+    }
+
+    /// Force a source re-scan and broadcast the result.
+    /// Called by SwiftUI when the user taps the MIDI banner.
+    func refreshMidi() {
+        midi.refresh()
         Task { await broadcastMidiState() }
     }
 

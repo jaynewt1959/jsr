@@ -24,6 +24,7 @@ actor EngineHost {
     private(set) var state: State = .idle
     private static let candidatePorts = [8089, 8090, 8091]
     private var serving = false
+    private var coordinator: MidiCoordinator?
 
     func ensureStarted() {
         guard !serving else { return }
@@ -32,17 +33,23 @@ actor EngineHost {
         Task { await self.run() }
     }
 
+    /// Trigger an immediate MIDI source re-scan from SwiftUI.
+    func refreshMidi() async {
+        await coordinator?.refreshMidi()
+    }
+
     private func run() async {
         let hub  = WebSocketHub()
         let midi = MidiInput()
         let coordinator = MidiCoordinator(hub: hub, midi: midi)
+        self.coordinator = coordinator
 
         // Build the WebSocket router.
         let wsRouter = Router(context: BasicWebSocketRequestContext.self)
         wsRouter.ws("/ws") { inbound, outbound, _ in
             let id = UUID()
             var continuation: AsyncStream<String>.Continuation!
-            let outbox = AsyncStream<String>(bufferingPolicy: .bufferingNewest(1)) { c in continuation = c }
+            let outbox = AsyncStream<String>(bufferingPolicy: .bufferingNewest(64)) { c in continuation = c }
             await hub.register(WebSocketSubscription(id: id, outbox: continuation))
             defer { Task { await hub.unregister(id: id) } }
 

@@ -195,6 +195,16 @@ public final class MidiInput: @unchecked Sendable {
         #endif
     }
 
+    /// Trigger a manual source scan — connects any newly-appeared
+    /// CoreMIDI sources and disconnects any that have vanished.
+    /// Safe to call from any thread at any time (idempotent if already
+    /// up-to-date). Does nothing if MIDI has not been started yet.
+    public func refresh() {
+        #if canImport(CoreMIDI)
+        refreshSources()
+        #endif
+    }
+
     /// Discard MIDI received before "now" so connecting doesn't replay
     /// keys the user pressed (or held) beforehand. Records a host-time
     /// boundary; `emit(_:from:)` drops events stamped earlier than it.
