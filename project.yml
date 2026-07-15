@@ -43,7 +43,6 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         UILaunchScreen:
           UIColorName: LaunchBackground
-          UIImageName: LaunchIcon
         UIUserInterfaceStyle: Dark
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
