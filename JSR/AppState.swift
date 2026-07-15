@@ -21,6 +21,12 @@ final class AppState: ObservableObject {
     @Published var currentFinger: Int? = nil
     /// Key label, e.g. "C major".
     @Published var exerciseKey: String = "C major"
+    /// Progression name, e.g. "50s", "Pop".
+    @Published var progressionName: String = "50s"
+    /// Currently selected key id (mirrors JS state), persisted across launches.
+    @Published var selectedKey: String = UserDefaults.standard.string(forKey: "jsr.selectedKey") ?? "C"
+    /// Currently selected progression id (mirrors JS state), persisted across launches.
+    @Published var selectedProgression: String = UserDefaults.standard.string(forKey: "jsr.selectedProgression") ?? "50s"
 
     // MARK: - MIDI status (populated by JS bridge)
 
@@ -40,6 +46,23 @@ final class AppState: ObservableObject {
         callJS?("if(window.jsr){window.jsr.nextExercise()}")
     }
 
+    func setKey(_ key: String) {
+        selectedKey = key
+        UserDefaults.standard.set(key, forKey: "jsr.selectedKey")
+        callJS?("if(window.jsr){window.jsr.setKey('\(key)')}")
+    }
+
+    func setProgression(_ prog: String) {
+        selectedProgression = prog
+        UserDefaults.standard.set(prog, forKey: "jsr.selectedProgression")
+        callJS?("if(window.jsr){window.jsr.setProgression('\(prog)')}")
+    }
+
+    /// Called after the WebView finishes loading — restores persisted key/progression into JS.
+    func applyPersistedConfig() {
+        callJS?("if(window.jsr){window.jsr.setKey('\(selectedKey)');window.jsr.setProgression('\(selectedProgression)')}")
+    }
+
     // MARK: - Bridge update
 
     /// Called from the WKScriptMessageHandler on the main thread.
@@ -53,6 +76,7 @@ final class AppState: ObservableObject {
         if let v = json["currentFinger"]    as? Int    { currentFinger    = v }
         else if json["currentFinger"] is NSNull        { currentFinger    = nil }
         if let v = json["exerciseKey"]      as? String { exerciseKey      = v }
+        if let v = json["progressionName"]   as? String { progressionName  = v }
         if let v = json["midiConnected"]    as? Bool   { midiConnected    = v }
         if let v = json["midiSourceName"]   as? String { midiSourceName   = v }
     }

@@ -40,6 +40,10 @@ export interface ExerciseState {
   exerciseIndex: number;
   /** True when 3 passes are complete and we should advance. */
   exerciseComplete: boolean;
+  /** Currently selected key id, e.g. "G", "Bb". */
+  selectedKey: string;
+  /** Currently selected progression id, e.g. "pop", "50s". */
+  selectedProgression: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -50,8 +54,12 @@ function buildInitialStatuses(notes: ExerciseNote[]): NoteStatus[] {
   return notes.map((_, i) => (i === 0 ? "current" : "pending"));
 }
 
-export function initialState(exerciseIndex: number = 0): ExerciseState {
-  const exercise = getExercise(exerciseIndex);
+export function initialState(
+  exerciseIndex: number = 0,
+  key: string = "C",
+  progression: string = "50s",
+): ExerciseState {
+  const exercise = getExercise(exerciseIndex, key, progression);
   return {
     exercise,
     currentNoteIndex: 0,
@@ -62,6 +70,8 @@ export function initialState(exerciseIndex: number = 0): ExerciseState {
     wrongNotePlayed: null,
     exerciseIndex,
     exerciseComplete: false,
+    selectedKey: key,
+    selectedProgression: progression,
   };
 }
 
@@ -72,7 +82,9 @@ export function initialState(exerciseIndex: number = 0): ExerciseState {
 export type Action =
   | { type: "NOTE_PLAYED"; midiNote: number }
   | { type: "ADVANCE_EXERCISE" }
-  | { type: "RESTART_EXERCISE" };
+  | { type: "RESTART_EXERCISE" }
+  | { type: "SET_CONFIG_KEY"; key: string }
+  | { type: "SET_CONFIG_PROGRESSION"; progression: string };
 
 export function reduce(state: ExerciseState, action: Action): ExerciseState {
   switch (action.type) {
@@ -80,10 +92,14 @@ export function reduce(state: ExerciseState, action: Action): ExerciseState {
       return handleNotePlayed(state, action.midiNote);
     case "ADVANCE_EXERCISE": {
       const next = state.exerciseIndex + 1;
-      return initialState(next);
+      return initialState(next, state.selectedKey, state.selectedProgression);
     }
     case "RESTART_EXERCISE":
-      return initialState(state.exerciseIndex);
+      return initialState(state.exerciseIndex, state.selectedKey, state.selectedProgression);
+    case "SET_CONFIG_KEY":
+      return initialState(0, action.key, state.selectedProgression);
+    case "SET_CONFIG_PROGRESSION":
+      return initialState(0, state.selectedKey, action.progression);
     default:
       return state;
   }

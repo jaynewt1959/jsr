@@ -20,6 +20,7 @@
 
 import { useEffect, useRef } from "react";
 import { Factory, Annotation, Barline } from "vexflow";
+import { KEYS } from "../engine/voiceLeading";
 import type { ExerciseNote, Exercise } from "../engine/voiceLeading";
 import type { NoteStatus } from "../engine/exerciseEngine";
 
@@ -32,11 +33,36 @@ const STATUS_COLOUR: Record<NoteStatus, string> = {
 };
 
 // ── MIDI → EasyScore ──────────────────────────────────────────────────────
-const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+//
+// We write only the diatonic letter name (no accidental) for each pitch class.
+// The key signature tells VexFlow how to inflect every letter automatically,
+// so no explicit sharps or flats ever appear on note heads.
+const DIATONIC_LETTERS = ['C','D','E','F','G','A','B'];
 
-function midiToEasyScore(midi: number, duration: string): string {
+// Starting letter index (into DIATONIC_LETTERS) for each key's root.
+const ROOT_LETTER_IDX: Record<string, number> = {
+  C:0, G:4, D:1, A:5, E:2, B:6, 'F#':3,
+  Db:1, Ab:5, Eb:2, Bb:6, F:3,
+};
+
+const SCALE_INTERVALS = [0, 2, 4, 5, 7, 9, 11] as const;
+
+/** Build a pitch-class → diatonic letter map for the given key id. */
+function buildPcToLetter(keyId: string): Record<number, string> {
+  const keyDef = KEYS.find(k => k.id === keyId) ?? KEYS[0];
+  const rootIdx = ROOT_LETTER_IDX[keyId] ?? 0;
+  const map: Record<number, string> = {};
+  for (let k = 0; k < 7; k++) {
+    const pc = (keyDef.pitchClass + SCALE_INTERVALS[k]) % 12;
+    map[pc] = DIATONIC_LETTERS[(rootIdx + k) % 7];
+  }
+  return map;
+}
+
+function midiToEasyScore(midi: number, duration: string, pcToLetter: Record<number, string>): string {
   const octave = Math.floor(midi / 12) - 1;
-  return `${NOTE_NAMES[midi % 12]}${octave}/${duration}`;
+  const letter = pcToLetter[midi % 12] ?? 'C';
+  return `${letter}${octave}/${duration}`;
 }
 
 // ── layout constants (aligned with vexflow-sandbox/GrandStaff.js) ─────────
@@ -45,13 +71,17 @@ function midiToEasyScore(midi: number, duration: string): string {
 //   natural first-note position for C major (no key signature).
 //   Derived from sandbox experiments: 115 (old base overhead) – 25 (old pad) = 90.
 const NATURAL_NOTE_START_BASE = 90;
-const SMALL_PAD    = 8;   // breathing room between time-sig and first note (px)
+const SMALL_PAD    = 8;   // breathing room between time-sig/key-sig and first note (px)
 const RIGHT_MARGIN = 20;  // right canvas margin (px)
 const START_X      = 40;  // left margin for the grand-staff brace
+const ACCIDENTAL_W = 13;  // approx px per accidental in a VexFlow key signature
 
-// First-measure header width: clef + time-sig + pad.
-// C major has no key signature so no extra accidental width.
-const MEASURE1_HEADER = NATURAL_NOTE_START_BASE + SMALL_PAD;  // 98 px
+// Accidental count per key (used to widen the first-measure header).
+const KEY_ACCIDENTALS: Record<string, number> = {
+  C: 0, G: 1, D: 2, A: 3, E: 4, B: 5, "F#": 6,
+  F: 1, Bb: 2, Eb: 3, Ab: 4, Db: 5,
+};
+
 
 // Fixed canvas size — fits 4 measures on an iPad in landscape.
 const CANVAS_WIDTH  = 970;
@@ -74,6 +104,11 @@ export function ScoreView({ exercise, noteStatuses }: ScoreViewProps) {
 
     el.id        = elementId;
     el.innerHTML = "";
+
+    // Key-dependent layout.
+    const keyId           = exercise.key.split(" ")[0]; // "G major" → "G"
+    const pcToLetter      = buildPcToLetter(keyId);
+    const MEASURE1_HEADER = NATURAL_NOTE_START_BASE + (KEY_ACCIDENTALS[keyId] ?? 0) * ACCIDENTAL_W + SMALL_PAD;
 
     const allNotes     = exercise.notes;
     const measureCount = Math.max(0, ...allNotes.map((n) => n.measure)) + 1;
@@ -110,7 +145,7 @@ export function ScoreView({ exercise, noteStatuses }: ScoreViewProps) {
       // note, so beat 0 treble is not an ExerciseNote).
       const trebleStr = [
         "B4/q/r",
-        ...tSrc.map((en) => midiToEasyScore(en.pitch, en.duration)),
+        ...tSrc.map((en) => midiToEasyScore(en.pitch, en.duration, pcToLetter)),
       ].join(", ");
 
       const tVF = score.notes(trebleStr, { stem: "up" });
@@ -131,7 +166,7 @@ export function ScoreView({ exercise, noteStatuses }: ScoreViewProps) {
       });
 
       // ── bass: whole note ─────────────────────────────────────────────────
-      const bassStr = bSrc.map((en) => midiToEasyScore(en.pitch, en.duration)).join(", ");
+      const bassStr = bSrc.map((en) => midiToEasyScore(en.pitch, en.duration, pcToLetter)).join(", ");
       const bVF     = score.notes(bassStr, { clef: "bass", stem: "down" });
 
       bSrc.forEach((en, j) => {
@@ -150,8 +185,8 @@ export function ScoreView({ exercise, noteStatuses }: ScoreViewProps) {
       const bass   = sys.addStave({ voices: [score.voice(bVF, { time: "4/4" })] });
 
       if (isFirst) {
-        treble.addClef("treble").addTimeSignature("4/4");
-        bass.addClef("bass").addTimeSignature("4/4");
+        treble.addClef("treble").addKeySignature(keyId).addTimeSignature("4/4");
+        bass.addClef("bass").addKeySignature(keyId).addTimeSignature("4/4");
         treble.setNoteStartX(treble.getNoteStartX() + SMALL_PAD);
         bass.setNoteStartX(bass.getNoteStartX() + SMALL_PAD);
         sys.addConnector("brace");

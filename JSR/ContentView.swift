@@ -19,6 +19,15 @@ struct ContentView: View {
 
     @StateObject private var appState = AppState()
 
+    private let allKeys = ["C","G","D","A","E","B","F#","Db","Ab","Eb","Bb","F"]
+    private let allProgressions: [(id: String, name: String, label: String)] = [
+        ("blues",      "Blues",       "I – IV – V – I"),
+        ("50s",        "50s",         "I – vi – IV – V"),
+        ("pop",        "Pop",         "I – V – vi – IV"),
+        ("circle",     "Circle",      "I – IV – ii – V"),
+        ("minor-feel", "Minor Feel",  "vi – IV – I – V"),
+    ]
+
     private enum Phase: Equatable {
         case waiting
         case ready(port: Int)
@@ -34,7 +43,6 @@ struct ContentView: View {
         switch phase {
         case .ready(let port):
             mainLayout(port: port)
-                .ignoresSafeArea()
         case .waiting:
             splash { ProgressView().tint(.white) }
                 .task(id: attempt) { await waitForServer() }
@@ -62,16 +70,71 @@ struct ContentView: View {
 
     @ViewBuilder
     private func mainLayout(port: Int) -> some View {
-        ZStack {
-            Color(hex: "0d1035").ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                headerBar
-                ScoreWebView(port: port, appState: appState)
-                controlBar
-                    .background(Color(hex: "111430"))
-            }
+        VStack(spacing: 0) {
+            headerBar
+            ScoreWebView(port: port, appState: appState)
+            selectorBar
+            controlBar
+                .background(Color(hex: "111430"))
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Color(hex: "0d1035").ignoresSafeArea())
+    }
+
+    // MARK: - Selector bar
+
+    private var selectorBar: some View {
+        HStack(spacing: 10) {
+            Text("KEY")
+                .font(.system(size: 10, weight: .heavy))
+                .tracking(2)
+                .foregroundColor(.white.opacity(0.5))
+
+            Picker("Key", selection: Binding(
+                get: { appState.selectedKey },
+                set: { appState.setKey($0) }
+            )) {
+                ForEach(allKeys, id: \.self) { key in
+                    Text(key).tag(key)
+                }
+            }
+            .pickerStyle(.menu)
+            .tint(Color(hex: "60c0ff"))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .background(Color.white.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            Divider()
+                .background(Color.white.opacity(0.3))
+                .frame(height: 20)
+                .padding(.horizontal, 4)
+
+            Text("PROGRESSION")
+                .font(.system(size: 10, weight: .heavy))
+                .tracking(2)
+                .foregroundColor(.white.opacity(0.5))
+
+            Picker("Progression", selection: Binding(
+                get: { appState.selectedProgression },
+                set: { appState.setProgression($0) }
+            )) {
+                ForEach(allProgressions, id: \.id) { prog in
+                    Text("\(prog.name)  \(prog.label)").tag(prog.id)
+                }
+            }
+            .pickerStyle(.menu)
+            .tint(Color(hex: "60c0ff"))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .background(Color.white.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 8)
+        .background(Color(hex: "111430"))
     }
 
     // MARK: - Header bar
@@ -311,6 +374,7 @@ struct ScoreWebView: UIViewRepresentable {
         cfg.mediaTypesRequiringUserActionForPlayback = []
 
         let wv = WKWebView(frame: .zero, configuration: cfg)
+        wv.navigationDelegate = context.coordinator
         // Opaque white — the score renders dark ink on white, like paper.
         // This beats any CSS trickery; the WKWebView IS white.
         wv.isOpaque = true
@@ -333,6 +397,7 @@ struct ScoreWebView: UIViewRepresentable {
     func updateUIView(_ uiView: WKWebView, context: Context) {}
 
     static func dismantleUIView(_ uiView: WKWebView, coordinator: BridgeHandler) {
+        uiView.navigationDelegate = nil
         uiView.configuration.userContentController
             .removeScriptMessageHandler(forName: "jsrBridge")
     }
@@ -340,9 +405,17 @@ struct ScoreWebView: UIViewRepresentable {
 
 // MARK: - JS → Swift bridge
 
-final class BridgeHandler: NSObject, WKScriptMessageHandler {
+final class BridgeHandler: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
     private weak var appState: AppState?
     init(appState: AppState) { self.appState = appState }
+
+    // After the React app finishes loading, restore the persisted key/progression.
+    // A short delay lets the React useEffect run and register window.jsr.
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            self?.appState?.applyPersistedConfig()
+        }
+    }
 
     func userContentController(
         _ ctrl: WKUserContentController,

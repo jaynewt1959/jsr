@@ -28,7 +28,6 @@ struct JSRApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .ignoresSafeArea()
                 .defersSystemGestures(on: .all)
         }
     }
