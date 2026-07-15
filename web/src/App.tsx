@@ -57,7 +57,7 @@ function snapToOctaveAbove(midi: number): number {
   return pc === 11 ? midi : midi + (11 - pc);
 }
 
-const FLASH_DURATION_MS = 420;
+const FLASH_DURATION_MS = 840;
 
 export default function App() {
   const [exState, dispatch] = useReducer(reduce, undefined, () => initialState(0));
