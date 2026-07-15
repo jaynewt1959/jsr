@@ -1,8 +1,100 @@
-/* App.css - JSR score view only. WKWebView is opaque white so
-   body background is irrelevant, but set white for safety. */
+/* App.css - JSR score view + virtual keyboard. */
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body, #root { background: #ffffff; }
 
-.score-root { padding: 16px; }
+.score-root {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ===== Keyboard container ================================================ */
+
+.keyboard-wrap {
+  width: 100%;
+  height: 110px;
+  padding: 0 4px;
+}
+
+/* ===== Piano keyboard strip ============================================== */
+
+.piano-keyboard {
+  position: relative;
+  height: 100%;
+  background: transparent;
+  border-radius: 8px;
+  user-select: none;
+  touch-action: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.piano-keyboard__whites {
+  display: flex;
+  height: 100%;
+  gap: 2px;
+}
+
+.piano-keyboard__white {
+  flex: 1 1 0;
+  background: #f8fafc;
+  border-radius: 0 0 6px 6px;
+  border: 1px solid #c8d0e8;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  padding-bottom: 6px;
+  font-size: 10px;
+  color: rgba(15, 23, 42, 0.5);
+  font-weight: 600;
+  transition: background 60ms ease, border-color 60ms ease;
+}
+
+.piano-keyboard__c-label {
+  pointer-events: none;
+}
+
+/* Flash colours — correct LH (blue), correct RH (orange), wrong (red) */
+.piano-keyboard__white--flash-left  { background: #3b82f6; border-color: #2563eb; color: white; }
+.piano-keyboard__white--flash-right { background: #f97316; border-color: #ea580c; color: white; }
+.piano-keyboard__white--flash-wrong { background: #ef4444; border-color: #dc2626; color: white; }
+
+/* Tap press — slight darkening while finger is down */
+.piano-keyboard__white--pressed { filter: brightness(0.78); }
+
+/* Black keys layer */
+.piano-keyboard__blacks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.piano-keyboard__black {
+  position: absolute;
+  top: 0;
+  width: 18px;
+  height: 60%;
+  margin-left: -9px;
+  background: #1e293b;
+  border: 1px solid #000;
+  border-radius: 0 0 4px 4px;
+  pointer-events: auto;
+  transition: background 60ms ease;
+}
+
+.piano-keyboard__black--flash-left  { background: #3b82f6; }
+.piano-keyboard__black--flash-right { background: #f97316; }
+.piano-keyboard__black--flash-wrong { background: #ef4444; }
+
+.piano-keyboard__black--pressed { filter: brightness(0.72); }
+
+/* Tappable cursor */
+.piano-keyboard--tappable .piano-keyboard__white,
+.piano-keyboard--tappable .piano-keyboard__black {
+  cursor: pointer;
+}

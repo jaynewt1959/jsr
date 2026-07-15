@@ -38,6 +38,8 @@ type ServerMessage = ServerNoteEvent | ServerMidiState;
 interface UseMidiOptions {
   /** Called for every note-on event (isOn=true, velocity>0). */
   onNoteOn: (note: number, velocity: number, sourceName: string) => void;
+  /** Called for every note-off event (isOn=false or velocity=0). */
+  onNoteOff?: (note: number, velocity: number, sourceName: string) => void;
   /** Called when the MIDI state (connected sources) changes. */
   onMidiState?: (state: MidiState) => void;
 }
@@ -51,13 +53,15 @@ function resolveWsUrl(): string {
   return `${proto}//${loc.hostname}:${loc.port}/ws`;
 }
 
-export function useMidi({ onNoteOn, onMidiState }: UseMidiOptions): void {
+export function useMidi({ onNoteOn, onNoteOff, onMidiState }: UseMidiOptions): void {
   const wsRef = useRef<WebSocket | null>(null);
   const onNoteOnRef = useRef(onNoteOn);
+  const onNoteOffRef = useRef(onNoteOff);
   const onMidiStateRef = useRef(onMidiState);
 
   // Keep refs current without triggering reconnect.
   onNoteOnRef.current = onNoteOn;
+  onNoteOffRef.current = onNoteOff;
   onMidiStateRef.current = onMidiState;
 
   const connect = useCallback(() => {
@@ -79,6 +83,8 @@ export function useMidi({ onNoteOn, onMidiState }: UseMidiOptions): void {
       }
       if (msg.type === "noteEvent" && msg.isOn && msg.velocity > 0) {
         onNoteOnRef.current(msg.note, msg.velocity, msg.sourceName);
+      } else if (msg.type === "noteEvent" && (!msg.isOn || msg.velocity === 0)) {
+        onNoteOffRef.current?.(msg.note, msg.velocity, msg.sourceName);
       } else if (msg.type === "midiState") {
         onMidiStateRef.current?.({
           connected: true,

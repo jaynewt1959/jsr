@@ -9,12 +9,55 @@
  * Swift → JS bridge: window.jsr.{restart, nextExercise} exposed below.
  */
 
-import { useReducer, useCallback, useState, useEffect } from "react";
+import { useReducer, useCallback, useState, useEffect, useRef } from "react";
 import { initialState, reduce, currentNote } from "./engine/exerciseEngine";
 import { useMidi } from "./hooks/useMidi";
 import type { MidiState } from "./hooks/useMidi";
 import { ScoreView } from "./components/ScoreView";
+import { PianoKeyboard } from "./components/PianoKeyboard";
+import type { FlashKey } from "./components/PianoKeyboard";
 import "./App.css";
+
+// ---------------------------------------------------------------------------
+// Error tone — short descending two-tone buzz via Web Audio
+// ---------------------------------------------------------------------------
+function playErrorTone() {
+  try {
+    const ctx = new AudioContext();
+    const now = ctx.currentTime;
+    [220, 180].forEach((freq, i) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sawtooth";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.18, now + i * 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.12);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + i * 0.08);
+      osc.stop(now + i * 0.08 + 0.13);
+    });
+    // Close context after sounds finish to avoid resource leak.
+    setTimeout(() => ctx.close(), 500);
+  } catch {
+    // AudioContext unavailable — ignore.
+  }
+}
+
+// ---------------------------------------------------------------------------
+// MIDI range helpers
+// ---------------------------------------------------------------------------
+/** Snap a MIDI note down to the nearest C. */
+function snapToOctaveBelow(midi: number): number {
+  return midi - (((midi % 12) + 12) % 12);
+}
+/** Snap a MIDI note up to the nearest B (one semitone below the next C). */
+function snapToOctaveAbove(midi: number): number {
+  const pc = ((midi % 12) + 12) % 12;
+  return pc === 11 ? midi : midi + (11 - pc);
+}
+
+const FLASH_DURATION_MS = 420;
 
 export default function App() {
   const [exState, dispatch] = useReducer(reduce, undefined, () => initialState(0));
@@ -24,20 +67,58 @@ export default function App() {
     sources: [],
     activeSource: null,
   });
+  const [flashKey, setFlashKey] = useState<FlashKey | null>(null);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleNoteOn = useCallback((note: number) => {
-    dispatch({ type: "NOTE_PLAYED", midiNote: note });
+  // Ref so handleNote always reads the latest state without needing it
+  // in its dependency array (avoids recreating the callback on every note).
+  const exStateRef = useRef(exState);
+  exStateRef.current = exState;
+
+  // Derive keyboard MIDI range from the current exercise.
+  const allPitches = exState.exercise.notes.map(n => n.pitch);
+  const lowestMidi  = snapToOctaveBelow(Math.min(...allPitches));
+  const highestMidi = snapToOctaveAbove(Math.max(...allPitches));
+
+  const triggerFlash = useCallback((midi: number, color: FlashKey["color"]) => {
+    if (flashTimerRef.current !== null) clearTimeout(flashTimerRef.current);
+    setFlashKey({ midi, color });
+    flashTimerRef.current = setTimeout(() => {
+      setFlashKey(null);
+      flashTimerRef.current = null;
+    }, FLASH_DURATION_MS);
   }, []);
 
-  useMidi({ onNoteOn: handleNoteOn, onMidiState: setMidiState });
+  // Shared note-played handler used by both MIDI and tap input.
+  const handleNote = useCallback((note: number) => {
+    const st = exStateRef.current;
+    const cn = st.exercise.notes[st.currentNoteIndex];
+    const isCorrect = cn != null && note === cn.pitch;
+    if (isCorrect) {
+      triggerFlash(note, cn.staff === "bass" ? "left" : "right");
+    } else {
+      triggerFlash(note, "wrong");
+      playErrorTone();
+    }
+    dispatch({ type: "NOTE_PLAYED", midiNote: note });
+  }, [triggerFlash]);
+
+  useMidi({ onNoteOn: handleNote, onMidiState: setMidiState });
 
   // Expose Swift → JS entry points.
   useEffect(() => {
     (window as any).jsr = {
-      restart:     () => dispatch({ type: "RESTART_EXERCISE" }),
-      nextExercise:() => dispatch({ type: "ADVANCE_EXERCISE" }),
+      restart:        () => dispatch({ type: "RESTART_EXERCISE" }),
+      nextExercise:   () => dispatch({ type: "ADVANCE_EXERCISE" }),
+      setKey:         (key: string) => dispatch({ type: "SET_CONFIG_KEY", key }),
+      setProgression: (prog: string) => dispatch({ type: "SET_CONFIG_PROGRESSION", progression: prog }),
     };
   }, [dispatch]);
+
+  // Clean up flash timer on unmount.
+  useEffect(() => () => {
+    if (flashTimerRef.current !== null) clearTimeout(flashTimerRef.current);
+  }, []);
 
   // Post state to SwiftUI via WKScriptMessageHandler on every change.
   const cn = currentNote(exState);
@@ -52,10 +133,13 @@ export default function App() {
       currentHand:      cn?.staff   ?? null,
       currentFinger:    cn?.finger  ?? null,
       exerciseKey:      exState.exercise.key,
+      progressionName:  exState.exercise.progressionName,
       midiConnected:    midiState.running && midiState.sources.length > 0,
       midiSourceName:   midiState.activeSource ?? "",
     }));
   }, [exState, midiState, cn]);
+
+  const tappable = !midiState.running;
 
   return (
     <div className="score-root">
@@ -63,6 +147,15 @@ export default function App() {
         exercise={exState.exercise}
         noteStatuses={exState.noteStatuses}
       />
+      <div className="keyboard-wrap">
+        <PianoKeyboard
+          lowestMidi={lowestMidi}
+          highestMidi={highestMidi}
+          flashKey={flashKey}
+          tappable={tappable}
+          onKey={(midi, isOn) => { if (isOn) handleNote(midi); }}
+        />
+      </div>
     </div>
   );
 }
