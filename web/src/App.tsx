@@ -69,6 +69,9 @@ export default function App() {
   });
   const [flashKey, setFlashKey] = useState<FlashKey | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Wrong notes played since the last correct note or reset.
+  // Displayed as persistent red on the keyboard until cleared.
+  const [wrongKeys, setWrongKeys] = useState<ReadonlySet<number>>(new Set());
 
   // Ref so handleNote always reads the latest state without needing it
   // in its dependency array (avoids recreating the callback on every note).
@@ -95,9 +98,12 @@ export default function App() {
     const cn = st.exercise.notes[st.currentNoteIndex];
     const isCorrect = cn != null && note === cn.pitch;
     if (isCorrect) {
+      // Clear all accumulated wrong keys and show a momentary correct flash.
+      setWrongKeys(new Set());
       triggerFlash(note, cn.staff === "bass" ? "left" : "right");
     } else {
-      triggerFlash(note, "wrong");
+      // Add to persistent wrong set — stays red until correct note or reset.
+      setWrongKeys(prev => new Set([...prev, note]));
       playErrorTone();
     }
     dispatch({ type: "NOTE_PLAYED", midiNote: note });
@@ -106,12 +112,14 @@ export default function App() {
   useMidi({ onNoteOn: handleNote, onMidiState: setMidiState });
 
   // Expose Swift → JS entry points.
+  // Each action also clears wrongKeys so stale red keys don't persist
+  // across exercise boundaries or manual restarts.
   useEffect(() => {
     (window as any).jsr = {
-      restart:        () => dispatch({ type: "RESTART_EXERCISE" }),
-      nextExercise:   () => dispatch({ type: "ADVANCE_EXERCISE" }),
-      setKey:         (key: string) => dispatch({ type: "SET_CONFIG_KEY", key }),
-      setProgression: (prog: string) => dispatch({ type: "SET_CONFIG_PROGRESSION", progression: prog }),
+      restart:        () => { setWrongKeys(new Set()); dispatch({ type: "RESTART_EXERCISE" }); },
+      nextExercise:   () => { setWrongKeys(new Set()); dispatch({ type: "ADVANCE_EXERCISE" }); },
+      setKey:         (key: string) => { setWrongKeys(new Set()); dispatch({ type: "SET_CONFIG_KEY", key }); },
+      setProgression: (prog: string) => { setWrongKeys(new Set()); dispatch({ type: "SET_CONFIG_PROGRESSION", progression: prog }); },
     };
   }, [dispatch]);
 
@@ -152,6 +160,7 @@ export default function App() {
           lowestMidi={lowestMidi}
           highestMidi={highestMidi}
           flashKey={flashKey}
+          wrongKeys={wrongKeys}
           tappable={tappable}
           onKey={(midi, isOn) => { if (isOn) handleNote(midi); }}
         />

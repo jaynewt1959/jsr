@@ -32,6 +32,12 @@ interface Props {
   highestMidi: number;
   /** Momentary flash feedback set by the parent; null = no flash. */
   flashKey: FlashKey | null;
+  /**
+   * Wrong notes played since the last correct note or reset.
+   * These keys are colored persistently red until cleared by the parent.
+   * flashKey takes priority if it targets the same key.
+   */
+  wrongKeys: ReadonlySet<number>;
   /** True when on-screen keys accept taps as note input. */
   tappable: boolean;
   /** Fired on tap press (isOn=true) and release (isOn=false). */
@@ -45,6 +51,7 @@ export function PianoKeyboard({
   lowestMidi,
   highestMidi,
   flashKey,
+  wrongKeys,
   tappable,
   onKey,
 }: Props) {
@@ -85,15 +92,27 @@ export function PianoKeyboard({
   const flashMidi  = flashKey?.midi;
   const flashColor = flashKey?.color ?? null;
 
+  // Resolve the color class for a given midi note.
+  // flashKey (correct note) takes priority over persistent wrong red.
+  const whiteColor = (midi: number): string => {
+    if (midi === flashMidi) return ` piano-keyboard__white--flash-${flashColor}`;
+    if (wrongKeys.has(midi)) return " piano-keyboard__white--flash-wrong";
+    return "";
+  };
+  const blackColor = (midi: number): string => {
+    if (midi === flashMidi) return ` piano-keyboard__black--flash-${flashColor}`;
+    if (wrongKeys.has(midi)) return " piano-keyboard__black--flash-wrong";
+    return "";
+  };
+
   return (
     <div className={`piano-keyboard${tappable ? " piano-keyboard--tappable" : ""}`}>
       {/* White keys */}
       <div className="piano-keyboard__whites">
         {whiteKeys.map((midi) => {
-          const isFlash   = midi === flashMidi;
           const isC       = midi % 12 === 0;
           const isPressed = tapPressed.has(midi);
-          const colorCls  = isFlash ? ` piano-keyboard__white--flash-${flashColor}` : "";
+          const colorCls  = whiteColor(midi);
           const pressCls  = isPressed ? " piano-keyboard__white--pressed" : "";
           return (
             <div
@@ -115,9 +134,8 @@ export function PianoKeyboard({
         {whiteKeys.map((midi, idx) => {
           const blackMidi = midi + 1;
           if (!isBlack(blackMidi) || idx === whiteKeys.length - 1) return null;
-          const isFlash   = blackMidi === flashMidi;
           const isPressed = tapPressed.has(blackMidi);
-          const colorCls  = isFlash ? ` piano-keyboard__black--flash-${flashColor}` : "";
+          const colorCls  = blackColor(blackMidi);
           const pressCls  = isPressed ? " piano-keyboard__black--pressed" : "";
           const leftPct   = ((idx + 1) / whiteKeys.length) * 100;
           return (
