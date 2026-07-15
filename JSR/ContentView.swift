@@ -93,29 +93,21 @@ struct ContentView: View {
 
     // MARK: - Begin overlay
 
+    // Begin overlay — absorbs the iOS system first-touch gate so the
+    // first real key press on the physical keyboard is never swallowed.
+    // Mirrors the jsp-ipad pattern exactly: dismiss only, no MIDI action.
+    // The user connects MIDI explicitly via the Connect MIDI button.
     private var beginOverlay: some View {
-        Button(action: {
-            showBeginOverlay = false
-            appState.connectMidi()
-        }) {
+        Button(action: { showBeginOverlay = false }) {
             ZStack {
                 Color(hex: "0d1035").ignoresSafeArea()
-                VStack(spacing: 20) {
-                    Image(systemName: "pianokeys.fill")
-                        .font(.system(size: 72))
-                        .foregroundColor(Color(hex: "60c0ff"))
+                VStack(spacing: 16) {
                     Text("JSR")
-                        .font(.system(size: 52, weight: .black))
+                        .font(.system(size: 64, weight: .black))
                         .foregroundColor(.white)
-                    Text("Sight Reading")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.55))
-                    Spacer().frame(height: 12)
-                    Text("Tap anywhere to connect your MIDI keyboard and begin")
-                        .font(.system(size: 15, weight: .semibold))
+                    Text("Tap anywhere to begin")
+                        .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(Color(hex: "facc15"))
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 320)
                 }
                 .padding(40)
             }
