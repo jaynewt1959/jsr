@@ -38,11 +38,21 @@ struct ContentView: View {
 
     @State private var phase: Phase = .waiting
     @State private var attempt = 0
+    /// Shown on first launch until the user taps to connect. Once
+    /// dismissed it does not reappear for the rest of the session.
+    @State private var showBeginOverlay = true
 
     var body: some View {
         switch phase {
         case .ready(let port):
             mainLayout(port: port)
+                .overlay {
+                    if showBeginOverlay {
+                        beginOverlay
+                            .transition(.opacity)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.25), value: showBeginOverlay)
         case .waiting:
             splash { ProgressView().tint(.white) }
                 .task(id: attempt) { await waitForServer() }
@@ -79,6 +89,39 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color(hex: "0d1035").ignoresSafeArea())
+    }
+
+    // MARK: - Begin overlay
+
+    private var beginOverlay: some View {
+        Button(action: {
+            showBeginOverlay = false
+            appState.connectMidi()
+        }) {
+            ZStack {
+                Color(hex: "0d1035").ignoresSafeArea()
+                VStack(spacing: 20) {
+                    Image(systemName: "pianokeys.fill")
+                        .font(.system(size: 72))
+                        .foregroundColor(Color(hex: "60c0ff"))
+                    Text("JSR")
+                        .font(.system(size: 52, weight: .black))
+                        .foregroundColor(.white)
+                    Text("Sight Reading")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.55))
+                    Spacer().frame(height: 12)
+                    Text("Tap anywhere to connect your MIDI keyboard and begin")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(Color(hex: "facc15"))
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 320)
+                }
+                .padding(40)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Selector bar
@@ -251,17 +294,25 @@ struct ContentView: View {
             // ─ MIDI ─────────────────────────────────────────────────
             Group {
                 if appState.midiConnected {
-                    Label(
-                        appState.midiSourceName.isEmpty ? "Connected" : appState.midiSourceName,
-                        systemImage: "pianokeys.fill"
-                    )
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.black)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(Color.green)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                } else {
+                    // Keyboard connected — show source name; tap to disconnect.
+                    Button(action: { appState.disconnectMidi() }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "pianokeys.fill")
+                            Text(appState.midiSourceName.isEmpty ? "Connected" : appState.midiSourceName)
+                                .lineLimit(1)
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.black.opacity(0.4))
+                        }
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Color.green)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
+                } else if appState.midiRunning {
+                    // MIDI started but no keyboard detected — tap to rescan.
                     Button(action: { Task { await EngineHost.shared.refreshMidi() } }) {
                         HStack(spacing: 6) {
                             Image(systemName: "exclamationmark.triangle.fill")
@@ -279,31 +330,22 @@ struct ContentView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
                     .buttonStyle(.plain)
+                } else {
+                    // MIDI not started — show Connect button.
+                    Button(action: { appState.connectMidi() }) {
+                        Label("Connect MIDI", systemImage: "pianokeys.fill")
+                            .font(.system(size: 13, weight: .heavy))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Color(hex: "3060c8"))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-        }
-    }
-
-    // MARK: - MIDI overlay
-
-    private var midiOverlay: some View {
-        ZStack {
-            Color(hex: "050818").opacity(0.88).ignoresSafeArea()
-            VStack(spacing: 20) {
-                Image(systemName: "pianokeys.fill")
-                    .font(.system(size: 56))
-                    .foregroundColor(Color(hex: "60c0ff"))
-                Text("Connect your MIDI keyboard to begin.")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                Text("No keyboard detected yet…")
-                    .font(.system(size: 16))
-                    .foregroundColor(.white.opacity(0.5))
-            }
-            .padding(48)
         }
     }
 

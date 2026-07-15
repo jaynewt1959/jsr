@@ -53,7 +53,9 @@ function resolveWsUrl(): string {
   return `${proto}//${loc.hostname}:${loc.port}/ws`;
 }
 
-export function useMidi({ onNoteOn, onNoteOff, onMidiState }: UseMidiOptions): void {
+export function useMidi({ onNoteOn, onNoteOff, onMidiState }: UseMidiOptions): {
+  sendCommand: (cmd: object) => void;
+} {
   const wsRef = useRef<WebSocket | null>(null);
   const onNoteOnRef = useRef(onNoteOn);
   const onNoteOffRef = useRef(onNoteOff);
@@ -64,15 +66,22 @@ export function useMidi({ onNoteOn, onNoteOff, onMidiState }: UseMidiOptions): v
   onNoteOffRef.current = onNoteOff;
   onMidiStateRef.current = onMidiState;
 
+  /** Send a command to the Swift server over the WebSocket. */
+  const sendCommand = useCallback((cmd: object) => {
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(cmd));
+    }
+  }, []);
+
   const connect = useCallback(() => {
     const url = resolveWsUrl();
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
-    ws.onopen = () => {
-      // Ask the server to start the MIDI listener.
-      ws.send(JSON.stringify({ type: "startMidi" }));
-    };
+    // Do NOT send startMidi automatically — the user must explicitly
+    // connect via the SwiftUI Connect MIDI button.
+    ws.onopen = () => {};
 
     ws.onmessage = (ev: MessageEvent<string>) => {
       let msg: ServerMessage;
@@ -111,4 +120,6 @@ export function useMidi({ onNoteOn, onNoteOff, onMidiState }: UseMidiOptions): v
       wsRef.current?.close();
     };
   }, [connect]);
+
+  return { sendCommand };
 }

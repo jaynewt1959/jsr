@@ -30,6 +30,9 @@ final class AppState: ObservableObject {
 
     // MARK: - MIDI status (populated by JS bridge)
 
+    /// True once the user has tapped Connect MIDI and CoreMIDI has started.
+    @Published var midiRunning: Bool = false
+    /// True when MIDI is running AND at least one source is connected.
     @Published var midiConnected: Bool = false
     @Published var midiSourceName: String = ""
 
@@ -58,6 +61,16 @@ final class AppState: ObservableObject {
         callJS?("if(window.jsr){window.jsr.setProgression('\(prog)')}")
     }
 
+    /// Start CoreMIDI via the JS bridge (idempotent).
+    func connectMidi() {
+        callJS?("if(window.jsr){window.jsr.connectMidi()}")
+    }
+
+    /// Stop CoreMIDI via the JS bridge.
+    func disconnectMidi() {
+        callJS?("if(window.jsr){window.jsr.disconnectMidi()}")
+    }
+
     /// Called after the WebView finishes loading — restores persisted key/progression into JS.
     func applyPersistedConfig() {
         callJS?("if(window.jsr){window.jsr.setKey('\(selectedKey)');window.jsr.setProgression('\(selectedProgression)')}")
@@ -77,6 +90,7 @@ final class AppState: ObservableObject {
         else if json["currentFinger"] is NSNull        { currentFinger    = nil }
         if let v = json["exerciseKey"]      as? String { exerciseKey      = v }
         if let v = json["progressionName"]   as? String { progressionName  = v }
+        if let v = json["midiRunning"]     as? Bool   { midiRunning      = v }
         if let v = json["midiConnected"]    as? Bool   { midiConnected    = v }
         if let v = json["midiSourceName"]   as? String { midiSourceName   = v }
     }

@@ -109,17 +109,23 @@ export default function App() {
     dispatch({ type: "NOTE_PLAYED", midiNote: note });
   }, [triggerFlash]);
 
-  useMidi({ onNoteOn: handleNote, onMidiState: setMidiState });
+  const { sendCommand } = useMidi({ onNoteOn: handleNote, onMidiState: setMidiState });
+  // Keep a stable ref so the window.jsr effect doesn't need sendCommand as a dep.
+  const sendCommandRef = useRef(sendCommand);
+  sendCommandRef.current = sendCommand;
 
   // Expose Swift → JS entry points.
   // Each action also clears wrongKeys so stale red keys don't persist
   // across exercise boundaries or manual restarts.
   useEffect(() => {
     (window as any).jsr = {
-      restart:        () => { setWrongKeys(new Set()); dispatch({ type: "RESTART_EXERCISE" }); },
-      nextExercise:   () => { setWrongKeys(new Set()); dispatch({ type: "ADVANCE_EXERCISE" }); },
-      setKey:         (key: string) => { setWrongKeys(new Set()); dispatch({ type: "SET_CONFIG_KEY", key }); },
-      setProgression: (prog: string) => { setWrongKeys(new Set()); dispatch({ type: "SET_CONFIG_PROGRESSION", progression: prog }); },
+      restart:         () => { setWrongKeys(new Set()); dispatch({ type: "RESTART_EXERCISE" }); },
+      nextExercise:    () => { setWrongKeys(new Set()); dispatch({ type: "ADVANCE_EXERCISE" }); },
+      setKey:          (key: string) => { setWrongKeys(new Set()); dispatch({ type: "SET_CONFIG_KEY", key }); },
+      setProgression:  (prog: string) => { setWrongKeys(new Set()); dispatch({ type: "SET_CONFIG_PROGRESSION", progression: prog }); },
+      // MIDI lifecycle — called from the SwiftUI Connect/Disconnect button.
+      connectMidi:     () => sendCommandRef.current({ type: "startMidi" }),
+      disconnectMidi:  () => sendCommandRef.current({ type: "stopMidi" }),
     };
   }, [dispatch]);
 
@@ -142,6 +148,7 @@ export default function App() {
       currentFinger:    cn?.finger  ?? null,
       exerciseKey:      exState.exercise.key,
       progressionName:  exState.exercise.progressionName,
+      midiRunning:      midiState.running,
       midiConnected:    midiState.running && midiState.sources.length > 0,
       midiSourceName:   midiState.activeSource ?? "",
     }));
