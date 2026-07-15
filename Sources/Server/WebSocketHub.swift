@@ -31,19 +31,25 @@ public actor WebSocketHub {
 
     private var subscriptions: [UUID: WebSocketSubscription] = [:]
 
-    /// Most recent broadcast — replayed to every newly registered
-    /// subscriber so a freshly connected client immediately gets the
-    /// current state instead of having to wait for the next change.
-    private var lastBroadcast: String?
+    /// Most recent MIDI-state message — replayed to every newly
+    /// registered subscriber so a freshly connected client immediately
+    /// gets the current connection state.
+    ///
+    /// Only `broadcastState(_:)` updates this cache. Transient note
+    /// events (via `broadcast(_:)`) are NOT cached: replaying a note
+    /// event to a reconnecting client would trigger a spurious
+    /// NOTE_PLAYED in the JS exercise engine.
+    private var lastMidiState: String?
 
     public init() {}
 
-    /// Add a subscriber. If we have a cached snapshot, send it
-    /// immediately so the client paints the correct initial state.
+    /// Add a subscriber. If we have a cached MIDI state, send it
+    /// immediately so the client knows the connection status without
+    /// waiting for the next change.
     public func register(_ subscription: WebSocketSubscription) {
         subscriptions[subscription.id] = subscription
-        if let last = lastBroadcast {
-            subscription.outbox.yield(last)
+        if let state = lastMidiState {
+            subscription.outbox.yield(state)
         }
     }
 
@@ -54,10 +60,20 @@ public actor WebSocketHub {
         }
     }
 
-    /// Push the same text frame to every connected client. Stores the
-    /// frame as the "last broadcast" so future joiners are caught up.
+    /// Push a MIDI state message to every client AND cache it so
+    /// future subscribers receive it on connect. Use this for
+    /// `midiState` messages whose content is always safe to replay.
+    public func broadcastState(_ text: String) {
+        lastMidiState = text
+        for sub in subscriptions.values {
+            sub.outbox.yield(text)
+        }
+    }
+
+    /// Push a transient message (e.g. a note event) to every client.
+    /// Does NOT update the replay cache — transient events must not
+    /// be re-delivered to reconnecting clients.
     public func broadcast(_ text: String) {
-        lastBroadcast = text
         for sub in subscriptions.values {
             sub.outbox.yield(text)
         }

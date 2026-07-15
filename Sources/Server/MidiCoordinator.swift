@@ -27,17 +27,20 @@ actor MidiCoordinator {
             Task { await self?.broadcastMidiState() }
         }
 
-        // Periodic fallback: re-scan sources every 2 s while MIDI is
-        // running but no keyboard is visible. Hot-plug notifications on
-        // iOS are sometimes delayed or missed, so polling fills the gap.
+        // Unconditional 1-second poll. CoreMIDI hot-plug notifications
+        // on iPadOS are sometimes delayed or missed entirely — both
+        // msgObjectAdded (reconnect) and msgObjectRemoved (disconnect).
+        // refreshSources() is idempotent: it diffs the live CoreMIDI
+        // source list against connectedSources and only fires the
+        // sourcesChangedHandler (which broadcasts) when something
+        // actually changed. Polling without the isEmpty guard catches
+        // the case where a disconnect notification was missed and the
+        // stale endpoint is still recorded as connected.
         Task { [weak self] in
             while true {
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                guard let self else { return }
-                if midi.isRunning() && midi.currentSourceNames().isEmpty {
-                    midi.refresh()
-                    await broadcastMidiState()
-                }
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard let self, midi.isRunning() else { continue }
+                midi.refresh()
             }
         }
 
@@ -77,7 +80,9 @@ actor MidiCoordinator {
         guard let json = try? encoder.encode(msg),
               let text = String(data: json, encoding: .utf8)
         else { return }
-        await hub.broadcast(text)
+        // broadcastState caches this message so reconnecting WS clients
+        // receive the current MIDI connection status immediately.
+        await hub.broadcastState(text)
     }
 
     private func broadcastNoteEvent(_ sourced: SourcedNoteEvent) async {
@@ -90,6 +95,8 @@ actor MidiCoordinator {
         guard let json = try? encoder.encode(msg),
               let text = String(data: json, encoding: .utf8)
         else { return }
+        // broadcast (not broadcastState) — note events are transient
+        // and must never be replayed to a reconnecting client.
         await hub.broadcast(text)
     }
 }
