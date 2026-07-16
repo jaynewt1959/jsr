@@ -132,13 +132,16 @@ export default function App() {
         });
         if (flashKeysTimerRef.current !== null) clearTimeout(flashKeysTimerRef.current);
         setFlashKeys(chordColors);
+        // Clear held notes immediately so notes pressed during the flash
+        // don't re-trigger chord acceptance.
+        heldNotesRef.current.clear();
         flashKeysTimerRef.current = setTimeout(() => {
           setFlashKeys(new Map());
           flashKeysTimerRef.current = null;
+          // Advance only after the flash finishes so the next chord isn't
+          // highlighted before the animation completes.
+          dispatch({ type: "CHORD_ACCEPTED" });
         }, FLASH_DURATION_MS);
-        dispatch({ type: "CHORD_ACCEPTED" });
-        // Clear held notes after chord accepted so next chord starts fresh.
-        heldNotesRef.current.clear();
       }
       return;
     }
