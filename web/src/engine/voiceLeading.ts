@@ -27,12 +27,15 @@ export interface ExerciseNote {
   romanNumeral?: string;
 }
 
+export type AppMode = 'sightReading' | 'chordRecognition';
+
 export interface Exercise {
   notes: ExerciseNote[];
   key: string;
   beatsPerMeasure: number;
   progressionName: string;
   progressionLabel: string;
+  mode: AppMode;
 }
 
 // ---------------------------------------------------------------------------
@@ -429,7 +432,68 @@ function buildExercise(
     }
   }
 
-  return { notes, key: keyName, beatsPerMeasure: 4, progressionName, progressionLabel };
+  return { notes, key: keyName, beatsPerMeasure: 4, progressionName, progressionLabel, mode: 'sightReading' };
+}
+
+// ---------------------------------------------------------------------------
+// Chord recognition exercise builder
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a chord-recognition exercise.
+ *
+ * Generates all `starts` (up to 5 starting voicings) as 5 consecutive measures.
+ * Each measure contains 4 chord groups (beats 0–3), one per chord in the progression.
+ * Each chord group = 1 bass quarter note + 3 treble quarter notes (block chord).
+ * No fingering. Roman numeral only (no chord name symbol).
+ */
+function buildChordRecognitionExercise(
+  progression: ChordDef[],
+  starts: Voicing[],
+  keyName: string,
+  progressionName: string,
+  progressionLabel: string,
+): Exercise {
+  const notes: ExerciseNote[] = [];
+  const allBassRoots = progression.map(c => c.bassRoot);
+
+  const NUM_VARIATIONS = 4;
+  for (let m = 0; m < NUM_VARIATIONS; m++) {
+    const startVoicing = starts[m % starts.length];
+    let prevVoicing = startVoicing;
+
+    for (let c = 0; c < progression.length; c++) {
+      const chord   = progression[c];
+      const voicing = c === 0 ? startVoicing : bestVoicing(chord, prevVoicing);
+      prevVoicing   = voicing;
+
+      // Treble: 3-note block chord at beat c — roman numeral on first note only.
+      for (let j = 0; j < 3; j++) {
+        notes.push({
+          pitch: voicing[j], duration: 'q', staff: 'treble',
+          finger: 0, measure: m, beat: c,
+          chordSymbol:  undefined,
+          romanNumeral: j === 0 ? chord.roman : undefined,
+        });
+      }
+
+      // Bass: root quarter note at beat c.
+      notes.push({
+        pitch: chord.bassRoot, duration: 'q', staff: 'bass',
+        finger: lhFingering(chord.bassRoot, allBassRoots),
+        measure: m, beat: c,
+      });
+    }
+  }
+
+  return {
+    notes,
+    key: keyName,
+    beatsPerMeasure: 4,
+    progressionName,
+    progressionLabel,
+    mode: 'chordRecognition',
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -448,6 +512,22 @@ export function getExercise(
   const start       = starts[index % starts.length];
   return buildExercise(
     progression, start,
+    `${key.id} major`,
+    template.name,
+    template.label,
+  );
+}
+
+export function getChordRecognitionExercise(
+  keyId: string = "C",
+  progressionId: string = "50s",
+): Exercise {
+  const key         = KEYS.find(k => k.id === keyId)                ?? KEYS[0];
+  const template    = PROGRESSIONS.find(p => p.id === progressionId) ?? PROGRESSIONS[1];
+  const progression = buildProgression(key, template);
+  const starts      = getStartingVoicings(progression[0]);
+  return buildChordRecognitionExercise(
+    progression, starts,
     `${key.id} major`,
     template.name,
     template.label,

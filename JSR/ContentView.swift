@@ -165,6 +165,23 @@ struct ContentView: View {
             .background(Color.white.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
+            Divider()
+                .background(Color.white.opacity(0.3))
+                .frame(height: 20)
+                .padding(.horizontal, 4)
+
+            // ─ MODE TOGGLE ───────────────────────────────────────────
+            Picker("Mode", selection: Binding(
+                get: { appState.appMode },
+                set: { appState.setMode($0) }
+            )) {
+                Text("Sight Reading").tag("sightReading")
+                Text("Chord").tag("chordRecognition")
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 220)
+            .colorMultiply(Color(hex: "60c0ff"))
+
             Spacer()
         }
         .padding(.horizontal, 20)
@@ -180,7 +197,8 @@ struct ContentView: View {
                 .font(.system(size: 24, weight: .black))
                 .foregroundColor(.white)
 
-            if let hand = appState.currentHand, let finger = appState.currentFinger {
+            if appState.appMode == "sightReading",
+               let hand = appState.currentHand, let finger = appState.currentFinger {
                 let label = hand == "treble" ? "Right hand" : "Left hand"
                 HStack(spacing: 6) {
                     Text("Next:")
@@ -243,9 +261,15 @@ struct ContentView: View {
                                 .frame(width: 28, height: 6)
                         }
                     }
-                    Text("Exercise \((appState.exerciseIndex % 5) + 1) of 5")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.7))
+                    if appState.appMode == "chordRecognition" {
+                        Text("Variation \(appState.currentVariation + 1) of 4")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.7))
+                    } else {
+                        Text("Exercise \((appState.exerciseIndex % 4) + 1) of 4")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.7))
+                    }
                 }
             }
             .padding(.horizontal, 20)

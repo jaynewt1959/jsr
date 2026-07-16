@@ -10,12 +10,13 @@
  */
 
 import { useReducer, useCallback, useState, useEffect, useRef } from "react";
-import { initialState, reduce, currentNote } from "./engine/exerciseEngine";
+import { initialState, reduce, currentNote, chordGroupPitches, chordGroupOf } from "./engine/exerciseEngine";
+import type { AppMode } from "./engine/voiceLeading";
 import { useMidi } from "./hooks/useMidi";
 import type { MidiState } from "./hooks/useMidi";
 import { ScoreView } from "./components/ScoreView";
 import { PianoKeyboard } from "./components/PianoKeyboard";
-import type { FlashKey } from "./components/PianoKeyboard";
+import type { FlashKey, FlashColor } from "./components/PianoKeyboard";
 import "./App.css";
 
 // ---------------------------------------------------------------------------
@@ -67,11 +68,16 @@ export default function App() {
     sources: [],
     activeSource: null,
   });
-  const [flashKey, setFlashKey] = useState<FlashKey | null>(null);
-  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [flashKey,  setFlashKey]  = useState<FlashKey | null>(null);
+  const [flashKeys, setFlashKeys] = useState<ReadonlyMap<number, FlashColor>>(new Map());
+  const flashTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashKeysTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Wrong notes played since the last correct note or reset.
   // Displayed as persistent red on the keyboard until cleared.
   const [wrongKeys, setWrongKeys] = useState<ReadonlySet<number>>(new Set());
+
+  // Held MIDI notes — used for chord recognition mode.
+  const heldNotesRef = useRef<Set<number>>(new Set());
 
   // Ref so handleNote always reads the latest state without needing it
   // in its dependency array (avoids recreating the callback on every note).
@@ -95,6 +101,49 @@ export default function App() {
   // Shared note-played handler used by both MIDI and tap input.
   const handleNote = useCallback((note: number) => {
     const st = exStateRef.current;
+
+    if (st.appMode === 'chordRecognition') {
+      // ─ Chord recognition mode ─
+      heldNotesRef.current.add(note);
+      const targetPitches = chordGroupPitches(
+        st.exercise.notes,
+        st.currentNoteIndex,
+      );
+      const isTarget = targetPitches.includes(note);
+
+      if (!isTarget) {
+        // Wrong note — flag the error but don't block chord completion.
+        setWrongKeys(prev => new Set([...prev, note]));
+        playErrorTone();
+        dispatch({ type: "NOTE_PLAYED", midiNote: note });
+        return;
+      }
+
+      // Check if all target pitches are now held.
+      const allHeld = targetPitches.every(p => heldNotesRef.current.has(p));
+      if (allHeld) {
+        setWrongKeys(new Set());
+        // Flash all chord notes simultaneously with per-hand colour.
+        const groupIdxs    = chordGroupOf(st.exercise.notes, st.currentNoteIndex);
+        const chordColors  = new Map<number, FlashKey["color"]>();
+        groupIdxs.forEach(i => {
+          const n = st.exercise.notes[i];
+          chordColors.set(n.pitch, n.staff === "bass" ? "left" : "right");
+        });
+        if (flashKeysTimerRef.current !== null) clearTimeout(flashKeysTimerRef.current);
+        setFlashKeys(chordColors);
+        flashKeysTimerRef.current = setTimeout(() => {
+          setFlashKeys(new Map());
+          flashKeysTimerRef.current = null;
+        }, FLASH_DURATION_MS);
+        dispatch({ type: "CHORD_ACCEPTED" });
+        // Clear held notes after chord accepted so next chord starts fresh.
+        heldNotesRef.current.clear();
+      }
+      return;
+    }
+
+    // ─ Sight-reading mode ─
     const cn = st.exercise.notes[st.currentNoteIndex];
     const isCorrect = cn != null && note === cn.pitch;
     if (isCorrect) {
@@ -109,7 +158,11 @@ export default function App() {
     dispatch({ type: "NOTE_PLAYED", midiNote: note });
   }, [triggerFlash]);
 
-  const { sendCommand } = useMidi({ onNoteOn: handleNote, onMidiState: setMidiState });
+  const { sendCommand } = useMidi({
+    onNoteOn:  handleNote,
+    onNoteOff: (note) => { heldNotesRef.current.delete(note); },
+    onMidiState: setMidiState,
+  });
   // Keep a stable ref so the window.jsr effect doesn't need sendCommand as a dep.
   const sendCommandRef = useRef(sendCommand);
   sendCommandRef.current = sendCommand;
@@ -119,19 +172,21 @@ export default function App() {
   // across exercise boundaries or manual restarts.
   useEffect(() => {
     (window as any).jsr = {
-      restart:         () => { setWrongKeys(new Set()); dispatch({ type: "RESTART_EXERCISE" }); },
-      nextExercise:    () => { setWrongKeys(new Set()); dispatch({ type: "ADVANCE_EXERCISE" }); },
-      setKey:          (key: string) => { setWrongKeys(new Set()); dispatch({ type: "SET_CONFIG_KEY", key }); },
-      setProgression:  (prog: string) => { setWrongKeys(new Set()); dispatch({ type: "SET_CONFIG_PROGRESSION", progression: prog }); },
+      restart:         () => { setWrongKeys(new Set()); heldNotesRef.current.clear(); dispatch({ type: "RESTART_EXERCISE" }); },
+      nextExercise:    () => { setWrongKeys(new Set()); heldNotesRef.current.clear(); dispatch({ type: "ADVANCE_EXERCISE" }); },
+      setKey:          (key: string) => { setWrongKeys(new Set()); heldNotesRef.current.clear(); dispatch({ type: "SET_CONFIG_KEY", key }); },
+      setProgression:  (prog: string) => { setWrongKeys(new Set()); heldNotesRef.current.clear(); dispatch({ type: "SET_CONFIG_PROGRESSION", progression: prog }); },
+      setMode:         (mode: AppMode) => { setWrongKeys(new Set()); heldNotesRef.current.clear(); dispatch({ type: "SET_MODE", mode }); },
       // MIDI lifecycle — called from the SwiftUI Connect/Disconnect button.
       connectMidi:     () => sendCommandRef.current({ type: "startMidi" }),
       disconnectMidi:  () => sendCommandRef.current({ type: "stopMidi" }),
     };
   }, [dispatch]);
 
-  // Clean up flash timer on unmount.
+  // Clean up flash timers on unmount.
   useEffect(() => () => {
-    if (flashTimerRef.current !== null) clearTimeout(flashTimerRef.current);
+    if (flashTimerRef.current     !== null) clearTimeout(flashTimerRef.current);
+    if (flashKeysTimerRef.current !== null) clearTimeout(flashKeysTimerRef.current);
   }, []);
 
   // Post state to SwiftUI via WKScriptMessageHandler on every change.
@@ -139,18 +194,21 @@ export default function App() {
   useEffect(() => {
     const bridge = (window as any).webkit?.messageHandlers?.jsrBridge;
     if (!bridge) return;
+    // In chord mode, report which measure (0-3) the current chord group is in.
+    const currentVariation = exState.exercise.notes[exState.currentNoteIndex]?.measure ?? 0;
     bridge.postMessage(JSON.stringify({
-      passCount:        exState.passCount,
-      exerciseIndex:    exState.exerciseIndex,
-      exerciseComplete: exState.exerciseComplete,
-      wrongNoteActive:  exState.wrongNoteActive,
-      currentHand:      cn?.staff   ?? null,
-      currentFinger:    cn?.finger  ?? null,
-      exerciseKey:      exState.exercise.key,
-      progressionName:  exState.exercise.progressionName,
-      midiRunning:      midiState.running,
-      midiConnected:    midiState.running && midiState.sources.length > 0,
-      midiSourceName:   midiState.activeSource ?? "",
+      passCount:         exState.passCount,
+      exerciseIndex:     exState.exerciseIndex,
+      exerciseComplete:  exState.exerciseComplete,
+      wrongNoteActive:   exState.wrongNoteActive,
+      currentHand:       cn?.staff   ?? null,
+      currentFinger:     cn?.finger  ?? null,
+      exerciseKey:       exState.exercise.key,
+      progressionName:   exState.exercise.progressionName,
+      midiRunning:       midiState.running,
+      midiConnected:     midiState.running && midiState.sources.length > 0,
+      midiSourceName:    midiState.activeSource ?? "",
+      currentVariation,
     }));
   }, [exState, midiState, cn]);
 
@@ -167,9 +225,13 @@ export default function App() {
           lowestMidi={lowestMidi}
           highestMidi={highestMidi}
           flashKey={flashKey}
+          flashKeys={flashKeys}
           wrongKeys={wrongKeys}
           tappable={tappable}
-          onKey={(midi, isOn) => { if (isOn) handleNote(midi); }}
+          onKey={(midi, isOn) => {
+            if (isOn) { handleNote(midi); }
+            else      { heldNotesRef.current.delete(midi); }
+          }}
         />
       </div>
     </div>

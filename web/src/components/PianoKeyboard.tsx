@@ -33,6 +33,12 @@ interface Props {
   /** Momentary flash feedback set by the parent; null = no flash. */
   flashKey: FlashKey | null;
   /**
+   * Multiple keys flashed simultaneously (chord recognition mode).
+   * Maps each MIDI note to its flash colour ("left" = blue, "right" = orange).
+   * flashKey takes priority over flashKeys for the same key.
+   */
+  flashKeys?: ReadonlyMap<number, FlashColor>;
+  /**
    * Wrong notes played since the last correct note or reset.
    * These keys are colored persistently red until cleared by the parent.
    * flashKey takes priority if it targets the same key.
@@ -51,6 +57,7 @@ export function PianoKeyboard({
   lowestMidi,
   highestMidi,
   flashKey,
+  flashKeys,
   wrongKeys,
   tappable,
   onKey,
@@ -93,14 +100,16 @@ export function PianoKeyboard({
   const flashColor = flashKey?.color ?? null;
 
   // Resolve the color class for a given midi note.
-  // flashKey (correct note) takes priority over persistent wrong red.
+  // Priority: flashKey > flashKeys > wrongKeys.
   const whiteColor = (midi: number): string => {
     if (midi === flashMidi) return ` piano-keyboard__white--flash-${flashColor}`;
+    if (flashKeys?.has(midi)) return ` piano-keyboard__white--flash-${flashKeys.get(midi)}`;
     if (wrongKeys.has(midi)) return " piano-keyboard__white--flash-wrong";
     return "";
   };
   const blackColor = (midi: number): string => {
     if (midi === flashMidi) return ` piano-keyboard__black--flash-${flashColor}`;
+    if (flashKeys?.has(midi)) return ` piano-keyboard__black--flash-${flashKeys.get(midi)}`;
     if (wrongKeys.has(midi)) return " piano-keyboard__black--flash-wrong";
     return "";
   };

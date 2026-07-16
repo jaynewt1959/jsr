@@ -27,6 +27,10 @@ final class AppState: ObservableObject {
     @Published var selectedKey: String = UserDefaults.standard.string(forKey: "jsr.selectedKey") ?? "C"
     /// Currently selected progression id (mirrors JS state), persisted across launches.
     @Published var selectedProgression: String = UserDefaults.standard.string(forKey: "jsr.selectedProgression") ?? "50s"
+    /// Current training mode, persisted across launches.
+    @Published var appMode: String = UserDefaults.standard.string(forKey: "jsr.appMode") ?? "sightReading"
+    /// In chord mode: 0-based index of the measure (variation) currently being played.
+    @Published var currentVariation: Int = 0
 
     // MARK: - MIDI status (populated by JS bridge)
 
@@ -61,6 +65,12 @@ final class AppState: ObservableObject {
         callJS?("if(window.jsr){window.jsr.setProgression('\(prog)')}")
     }
 
+    func setMode(_ mode: String) {
+        appMode = mode
+        UserDefaults.standard.set(mode, forKey: "jsr.appMode")
+        callJS?("if(window.jsr){window.jsr.setMode('\(mode)')}")
+    }
+
     /// Start CoreMIDI via the JS bridge (idempotent).
     func connectMidi() {
         callJS?("if(window.jsr){window.jsr.connectMidi()}")
@@ -71,9 +81,9 @@ final class AppState: ObservableObject {
         callJS?("if(window.jsr){window.jsr.disconnectMidi()}")
     }
 
-    /// Called after the WebView finishes loading — restores persisted key/progression into JS.
+    /// Called after the WebView finishes loading — restores persisted key/progression/mode into JS.
     func applyPersistedConfig() {
-        callJS?("if(window.jsr){window.jsr.setKey('\(selectedKey)');window.jsr.setProgression('\(selectedProgression)')}")
+        callJS?("if(window.jsr){window.jsr.setKey('\(selectedKey)');window.jsr.setProgression('\(selectedProgression)');window.jsr.setMode('\(appMode)')}")
     }
 
     // MARK: - Bridge update
@@ -93,5 +103,6 @@ final class AppState: ObservableObject {
         if let v = json["midiRunning"]     as? Bool   { midiRunning      = v }
         if let v = json["midiConnected"]    as? Bool   { midiConnected    = v }
         if let v = json["midiSourceName"]   as? String { midiSourceName   = v }
+        if let v = json["currentVariation"] as? Int    { currentVariation = v }
     }
 }

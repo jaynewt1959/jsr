@@ -23,11 +23,22 @@ import { Factory, Annotation, Barline } from "vexflow";
 import { KEYS } from "../engine/voiceLeading";
 import type { ExerciseNote, Exercise } from "../engine/voiceLeading";
 import type { NoteStatus } from "../engine/exerciseEngine";
+import { chordGroupOf } from "../engine/exerciseEngine";
 
 // ── colours ──────────────────────────────────────────────────────────────
 const STATUS_COLOUR: Record<NoteStatus, string> = {
   pending: "#1a1a2a",
   current: "#1060c8",
+  correct: "#aaaaaa",
+  wrong:   "#cc1f1f",
+};
+
+// Chord recognition mode uses hand-matched colours:
+//   treble (RH) current → orange  (matches keyboard flash)
+//   bass   (LH) current → blue    (unchanged)
+const STATUS_COLOUR_TREBLE_CHORD: Record<NoteStatus, string> = {
+  pending: "#1a1a2a",
+  current: "#c87020",
   correct: "#aaaaaa",
   wrong:   "#cc1f1f",
 };
@@ -83,9 +94,295 @@ const KEY_ACCIDENTALS: Record<string, number> = {
 };
 
 
-// Fixed canvas size — fits 4 measures on an iPad in landscape.
+// Fixed canvas size.
+// Sight-reading: 4 measures; chord recognition: 5 measures.
 const CANVAS_WIDTH  = 970;
 const CANVAS_HEIGHT = 280;
+
+// ── SVG helpers ───────────────────────────────────────────────────────────
+
+function addWhiteBg(svg: SVGElement) {
+  const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  bg.setAttribute("width",  "100%");
+  bg.setAttribute("height", "100%");
+  bg.setAttribute("fill",   "#ffffff");
+  svg.insertBefore(bg, svg.firstChild);
+}
+
+function addSvgText(
+  svg: SVGElement,
+  x: number,
+  y: number,
+  text: string,
+  opts: { fill?: string; fontSize?: string; fontWeight?: string } = {},
+) {
+  const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  txt.setAttribute("x",           String(x));
+  txt.setAttribute("y",           String(y));
+  txt.setAttribute("fill",        opts.fill       ?? "#2a4ea8");
+  txt.setAttribute("font-size",   opts.fontSize   ?? "11");
+  txt.setAttribute("font-family", "Arial");
+  txt.setAttribute("font-weight", opts.fontWeight ?? "bold");
+  txt.textContent = text;
+  svg.appendChild(txt);
+}
+
+// ── Sight-reading renderer ─────────────────────────────────────────────────
+
+function renderSightReading(
+  el: HTMLElement,
+  elementId: string,
+  exercise: Exercise,
+  noteStatuses: NoteStatus[],
+) {
+  const keyId           = exercise.key.split(" ")[0];
+  const pcToLetter      = buildPcToLetter(keyId);
+  const MEASURE1_HEADER = NATURAL_NOTE_START_BASE + (KEY_ACCIDENTALS[keyId] ?? 0) * ACCIDENTAL_W + SMALL_PAD;
+
+  const allNotes     = exercise.notes;
+  const measureCount = Math.max(0, ...allNotes.map((n) => n.measure)) + 1;
+
+  const byMeasure: ExerciseNote[][] = Array.from({ length: measureCount }, () => []);
+  allNotes.forEach((n) => byMeasure[n.measure].push(n));
+
+  const noteAreaWidth =
+    (CANVAS_WIDTH - START_X - MEASURE1_HEADER - RIGHT_MARGIN) / measureCount;
+
+  const factory = new Factory({
+    renderer: { elementId, width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
+  });
+  const score = factory.EasyScore();
+
+  const staveXPos: number[] = [];
+  let x = START_X;
+
+  for (let m = 0; m < measureCount; m++) {
+    const isFirst = m === 0;
+    const isFinal = m === measureCount - 1;
+    const width   = isFirst ? MEASURE1_HEADER + noteAreaWidth : noteAreaWidth;
+    staveXPos.push(x);
+
+    const sys    = factory.System({ x, y: 40, width });
+    const mNotes = byMeasure[m] ?? [];
+    const tSrc   = mNotes.filter((n) => n.staff === "treble");
+    const bSrc   = mNotes.filter((n) => n.staff === "bass");
+
+    // Treble: quarter rest + arpeggio.
+    const trebleStr = [
+      "B4/q/r",
+      ...tSrc.map((en) => midiToEasyScore(en.pitch, en.duration, pcToLetter)),
+    ].join(", ");
+    const tVF = score.notes(trebleStr, { stem: "up" });
+    tVF[0].setStyle({ fillStyle: STATUS_COLOUR.pending, strokeStyle: STATUS_COLOUR.pending });
+    tSrc.forEach((en, j) => {
+      const colour = STATUS_COLOUR[noteStatuses[allNotes.indexOf(en)] ?? "pending"];
+      tVF[j + 1].setStyle({ fillStyle: colour, strokeStyle: colour });
+      tVF[j + 1].addModifier(
+        new Annotation(String(en.finger))
+          .setFont("Arial", 9)
+          .setVerticalJustification(Annotation.VerticalJustify.TOP),
+        0,
+      );
+    });
+
+    // Bass: whole note.
+    const bassStr = bSrc.map((en) => midiToEasyScore(en.pitch, en.duration, pcToLetter)).join(", ");
+    const bVF     = score.notes(bassStr, { clef: "bass", stem: "down" });
+    bSrc.forEach((en, j) => {
+      const colour = STATUS_COLOUR[noteStatuses[allNotes.indexOf(en)] ?? "pending"];
+      bVF[j].setStyle({ fillStyle: colour, strokeStyle: colour });
+      bVF[j].addModifier(
+        new Annotation(String(en.finger))
+          .setFont("Arial", 9)
+          .setVerticalJustification(Annotation.VerticalJustify.BOTTOM),
+        0,
+      );
+    });
+
+    const treble = sys.addStave({ voices: [score.voice(tVF, { time: "4/4" })] });
+    const bass   = sys.addStave({ voices: [score.voice(bVF, { time: "4/4" })] });
+
+    if (isFirst) {
+      treble.addClef("treble").addKeySignature(keyId).addTimeSignature("4/4");
+      bass.addClef("bass").addKeySignature(keyId).addTimeSignature("4/4");
+      treble.setNoteStartX(treble.getNoteStartX() + SMALL_PAD);
+      bass.setNoteStartX(bass.getNoteStartX() + SMALL_PAD);
+      sys.addConnector("brace");
+      sys.addConnector("singleLeft");
+    }
+    if (isFinal) {
+      treble.setEndBarType(Barline.type.END);
+      bass.setEndBarType(Barline.type.END);
+      sys.addConnector("boldDoubleRight");
+    } else {
+      sys.addConnector("singleRight");
+    }
+    x += width;
+  }
+
+  factory.draw();
+
+  const svg = el.querySelector("svg");
+  if (!svg) return;
+  addWhiteBg(svg as SVGElement);
+
+  // Chord symbols above the treble stave.
+  byMeasure.forEach((mNotes, m) => {
+    const cn = mNotes.find((n) => n.staff === "treble" && n.chordSymbol);
+    if (!cn?.chordSymbol) return;
+    const cx = m === 0 ? staveXPos[0] + MEASURE1_HEADER + 8 : staveXPos[m] + 8;
+    addSvgText(svg as SVGElement, cx, 30, `${cn.chordSymbol}  (${cn.romanNumeral})`);
+  });
+}
+
+// ── Chord-recognition renderer ─────────────────────────────────────────────
+
+function renderChordRecognition(
+  el: HTMLElement,
+  elementId: string,
+  exercise: Exercise,
+  noteStatuses: NoteStatus[],
+) {
+  const keyId           = exercise.key.split(" ")[0];
+  const pcToLetter      = buildPcToLetter(keyId);
+  const MEASURE1_HEADER = NATURAL_NOTE_START_BASE + (KEY_ACCIDENTALS[keyId] ?? 0) * ACCIDENTAL_W + SMALL_PAD;
+
+  const allNotes     = exercise.notes;
+  const measureCount = Math.max(0, ...allNotes.map((n) => n.measure)) + 1;
+
+  const byMeasure: ExerciseNote[][] = Array.from({ length: measureCount }, () => []);
+  allNotes.forEach((n) => byMeasure[n.measure].push(n));
+
+  const noteAreaWidth =
+    (CANVAS_WIDTH - START_X - MEASURE1_HEADER - RIGHT_MARGIN) / measureCount;
+
+  const factory = new Factory({
+    renderer: { elementId, width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
+  });
+  const score = factory.EasyScore();
+
+  const staveXPos: number[]       = [];
+  // beat fraction → approximate x offset within note area (4 beats = noteAreaWidth)
+  const beatFraction              = noteAreaWidth / 4;
+  let x = START_X;
+
+  for (let m = 0; m < measureCount; m++) {
+    const isFirst = m === 0;
+    const isFinal = m === measureCount - 1;
+    const width   = isFirst ? MEASURE1_HEADER + noteAreaWidth : noteAreaWidth;
+    staveXPos.push(x);
+
+    const sys    = factory.System({ x, y: 40, width });
+    const mNotes = byMeasure[m] ?? [];
+
+    // Group treble notes by beat, collect bass notes by beat.
+    const tByBeat: Map<number, ExerciseNote[]> = new Map();
+    const bByBeat: Map<number, ExerciseNote>   = new Map();
+    for (const n of mNotes) {
+      if (n.staff === "treble") {
+        if (!tByBeat.has(n.beat)) tByBeat.set(n.beat, []);
+        tByBeat.get(n.beat)!.push(n);
+      } else {
+        bByBeat.set(n.beat, n);
+      }
+    }
+
+    // Build EasyScore strings for 4 beats (block chords in treble, quarter in bass).
+    const trebleTokens: string[] = [];
+    const bassTokens:   string[] = [];
+
+    for (let beat = 0; beat < 4; beat++) {
+      const tNotes = tByBeat.get(beat) ?? [];
+      const bNote  = bByBeat.get(beat);
+
+      if (tNotes.length === 3) {
+        // Block chord: (C4 E4 G4)/q
+        const pitches = tNotes.map((n) => {
+          const octave = Math.floor(n.pitch / 12) - 1;
+          const letter = pcToLetter[n.pitch % 12] ?? 'C';
+          return `${letter}${octave}`;
+        });
+        trebleTokens.push(`(${pitches.join(' ')})/q`);
+      } else {
+        // Fallback: rest if somehow no treble notes at this beat.
+        trebleTokens.push("B4/q/r");
+      }
+
+      if (bNote) {
+        bassTokens.push(midiToEasyScore(bNote.pitch, bNote.duration, pcToLetter));
+      } else {
+        bassTokens.push("C3/q/r");
+      }
+    }
+
+    const tVF = score.notes(trebleTokens.join(", "), { stem: "up" });
+    const bVF = score.notes(bassTokens.join(",   "), { clef: "bass", stem: "down" });
+
+    // Colour each block chord by the status of its first treble note.
+    // Treble uses the orange-current palette; bass keeps the standard blue.
+    for (let beat = 0; beat < 4; beat++) {
+      const tNotes = tByBeat.get(beat) ?? [];
+      if (tNotes.length === 0) continue;
+      const firstNote = tNotes[0];
+      const groupIdxs = chordGroupOf(allNotes, allNotes.indexOf(firstNote));
+      // All notes in group share the same status; use the first.
+      const status = noteStatuses[groupIdxs[0] ?? allNotes.indexOf(firstNote)] ?? "pending";
+      const colour = STATUS_COLOUR_TREBLE_CHORD[status];
+      tVF[beat].setStyle({ fillStyle: colour, strokeStyle: colour });
+
+      // Bass note at this beat.
+      const bNote = bByBeat.get(beat);
+      if (bNote) {
+        const bStatus = noteStatuses[allNotes.indexOf(bNote)] ?? "pending";
+        bVF[beat].setStyle({ fillStyle: STATUS_COLOUR[bStatus], strokeStyle: STATUS_COLOUR[bStatus] });
+      }
+    }
+
+    const treble = sys.addStave({ voices: [score.voice(tVF, { time: "4/4" })] });
+    const bass   = sys.addStave({ voices: [score.voice(bVF, { time: "4/4" })] });
+
+    if (isFirst) {
+      treble.addClef("treble").addKeySignature(keyId).addTimeSignature("4/4");
+      bass.addClef("bass").addKeySignature(keyId).addTimeSignature("4/4");
+      treble.setNoteStartX(treble.getNoteStartX() + SMALL_PAD);
+      bass.setNoteStartX(bass.getNoteStartX() + SMALL_PAD);
+      sys.addConnector("brace");
+      sys.addConnector("singleLeft");
+    }
+    if (isFinal) {
+      treble.setEndBarType(Barline.type.END);
+      bass.setEndBarType(Barline.type.END);
+      sys.addConnector("boldDoubleRight");
+    } else {
+      sys.addConnector("singleRight");
+    }
+    x += width;
+  }
+
+  factory.draw();
+
+  const svg = el.querySelector("svg");
+  if (!svg) return;
+  addWhiteBg(svg as SVGElement);
+
+  // Roman numerals above each chord beat.
+  // We use the beat-fraction estimate to position them, then refine with
+  // the header offset for measure 0.
+  byMeasure.forEach((mNotes, m) => {
+    const noteStartOffset = m === 0 ? MEASURE1_HEADER : 0;
+    const measureX        = staveXPos[m] + noteStartOffset;
+
+    // Collect the roman numeral note for each beat.
+    for (let beat = 0; beat < 4; beat++) {
+      const rn = mNotes.find((n) => n.staff === "treble" && n.beat === beat && n.romanNumeral);
+      if (!rn?.romanNumeral) continue;
+      // Approximate x: note area starts at measureX (+SMALL_PAD for m=0),
+      // each beat is ~beatFraction px apart.
+      const cx = measureX + SMALL_PAD + beat * beatFraction;
+      addSvgText(svg as SVGElement, cx, 30, `(${rn.romanNumeral})`);
+    }
+  });
+}
 
 // ── component ─────────────────────────────────────────────────────────────
 interface ScoreViewProps {
@@ -105,136 +402,11 @@ export function ScoreView({ exercise, noteStatuses }: ScoreViewProps) {
     el.id        = elementId;
     el.innerHTML = "";
 
-    // Key-dependent layout.
-    const keyId           = exercise.key.split(" ")[0]; // "G major" → "G"
-    const pcToLetter      = buildPcToLetter(keyId);
-    const MEASURE1_HEADER = NATURAL_NOTE_START_BASE + (KEY_ACCIDENTALS[keyId] ?? 0) * ACCIDENTAL_W + SMALL_PAD;
-
-    const allNotes     = exercise.notes;
-    const measureCount = Math.max(0, ...allNotes.map((n) => n.measure)) + 1;
-
-    const byMeasure: ExerciseNote[][] = Array.from({ length: measureCount }, () => []);
-    allNotes.forEach((n) => byMeasure[n.measure].push(n));
-
-    // Note area per measure derived from fixed canvas width.
-    const noteAreaWidth =
-      (CANVAS_WIDTH - START_X - MEASURE1_HEADER - RIGHT_MARGIN) / measureCount;
-
-    // ── VexFlow Factory + EasyScore ────────────────────────────────────────
-    const factory = new Factory({
-      renderer: { elementId, width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
-    });
-    const score = factory.EasyScore();
-
-    const staveXPos: number[] = [];  // stave left-edge x per measure
-    let x = START_X;
-
-    for (let m = 0; m < measureCount; m++) {
-      const isFirst = m === 0;
-      const isFinal = m === measureCount - 1;
-      const width   = isFirst ? MEASURE1_HEADER + noteAreaWidth : noteAreaWidth;
-      staveXPos.push(x);
-
-      const sys    = factory.System({ x, y: 40, width });
-      const mNotes = byMeasure[m] ?? [];
-      const tSrc   = mNotes.filter((n) => n.staff === "treble");
-      const bSrc   = mNotes.filter((n) => n.staff === "bass");
-
-      // ── treble: quarter rest + arpeggio ─────────────────────────────────
-      // Beat 0 is always a visual rest (the engine sequences from the bass
-      // note, so beat 0 treble is not an ExerciseNote).
-      const trebleStr = [
-        "B4/q/r",
-        ...tSrc.map((en) => midiToEasyScore(en.pitch, en.duration, pcToLetter)),
-      ].join(", ");
-
-      const tVF = score.notes(trebleStr, { stem: "up" });
-
-      // Rest: always ink colour.
-      tVF[0].setStyle({ fillStyle: STATUS_COLOUR.pending, strokeStyle: STATUS_COLOUR.pending });
-
-      // Exercise notes: colour + finger annotation.
-      tSrc.forEach((en, j) => {
-        const colour = STATUS_COLOUR[noteStatuses[allNotes.indexOf(en)] ?? "pending"];
-        tVF[j + 1].setStyle({ fillStyle: colour, strokeStyle: colour });
-        tVF[j + 1].addModifier(
-          new Annotation(String(en.finger))
-            .setFont("Arial", 9)
-            .setVerticalJustification(Annotation.VerticalJustify.TOP),
-          0,
-        );
-      });
-
-      // ── bass: whole note ─────────────────────────────────────────────────
-      const bassStr = bSrc.map((en) => midiToEasyScore(en.pitch, en.duration, pcToLetter)).join(", ");
-      const bVF     = score.notes(bassStr, { clef: "bass", stem: "down" });
-
-      bSrc.forEach((en, j) => {
-        const colour = STATUS_COLOUR[noteStatuses[allNotes.indexOf(en)] ?? "pending"];
-        bVF[j].setStyle({ fillStyle: colour, strokeStyle: colour });
-        bVF[j].addModifier(
-          new Annotation(String(en.finger))
-            .setFont("Arial", 9)
-            .setVerticalJustification(Annotation.VerticalJustify.BOTTOM),
-          0,
-        );
-      });
-
-      // ── add staves to system ─────────────────────────────────────────────
-      const treble = sys.addStave({ voices: [score.voice(tVF, { time: "4/4" })] });
-      const bass   = sys.addStave({ voices: [score.voice(bVF, { time: "4/4" })] });
-
-      if (isFirst) {
-        treble.addClef("treble").addKeySignature(keyId).addTimeSignature("4/4");
-        bass.addClef("bass").addKeySignature(keyId).addTimeSignature("4/4");
-        treble.setNoteStartX(treble.getNoteStartX() + SMALL_PAD);
-        bass.setNoteStartX(bass.getNoteStartX() + SMALL_PAD);
-        sys.addConnector("brace");
-        sys.addConnector("singleLeft");
-      }
-
-      if (isFinal) {
-        treble.setEndBarType(Barline.type.END);
-        bass.setEndBarType(Barline.type.END);
-        sys.addConnector("boldDoubleRight");
-      } else {
-        sys.addConnector("singleRight");
-      }
-
-      x += width;
+    if (exercise.mode === 'chordRecognition') {
+      renderChordRecognition(el, elementId, exercise, noteStatuses);
+    } else {
+      renderSightReading(el, elementId, exercise, noteStatuses);
     }
-
-    factory.draw();
-
-    // ── SVG post-processing ───────────────────────────────────────────────
-    const svg = el.querySelector("svg");
-    if (!svg) return;
-
-    // White background — WKWebView shows through a transparent SVG.
-    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    bg.setAttribute("width",  "100%");
-    bg.setAttribute("height", "100%");
-    bg.setAttribute("fill",   "#ffffff");
-    svg.insertBefore(bg, svg.firstChild);
-
-    // Chord symbols above the treble stave (e.g. "C  (I)").
-    byMeasure.forEach((mNotes, m) => {
-      const cn = mNotes.find((n) => n.staff === "treble" && n.chordSymbol);
-      if (!cn?.chordSymbol) return;
-
-      // On measure 0 place symbol after the clef/time-sig; elsewhere at stave left.
-      const cx = m === 0 ? staveXPos[0] + MEASURE1_HEADER + 8 : staveXPos[m] + 8;
-
-      const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      txt.setAttribute("x",           String(cx));
-      txt.setAttribute("y",           "30");
-      txt.setAttribute("fill",        "#2a4ea8");
-      txt.setAttribute("font-size",   "11");
-      txt.setAttribute("font-family", "Arial");
-      txt.setAttribute("font-weight", "bold");
-      txt.textContent = `${cn.chordSymbol}  (${cn.romanNumeral})`;
-      svg.appendChild(txt);
-    });
 
   }, [exercise, noteStatuses, elementId]);
 
