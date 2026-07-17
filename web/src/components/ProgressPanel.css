@@ -1,0 +1,213 @@
+/* ProgressPanel.css — JSR progress heat-map panel */
+
+/* ===== Container card ===================================================== */
+
+.progress-panel {
+  width: 100%;
+  background: #111430;
+  border-radius: 10px;
+  padding: 10px 12px 12px;
+  box-sizing: border-box;
+}
+
+/* ===== Header strip ======================================================= */
+
+.progress-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.progress-panel__title {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: rgba(255, 255, 255, 0.5);
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.progress-panel__hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+  letter-spacing: 0.1px;
+}
+
+.progress-panel__spacer { flex: 1; }
+
+.progress-panel__reset-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 120ms, color 120ms;
+}
+
+.progress-panel__reset-btn:hover {
+  border-color: rgba(255, 255, 255, 0.45);
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* ===== Key grid =========================================================== */
+
+.progress-panel__grid {
+  display: flex;
+  gap: 4px;
+}
+
+/* ===== Key cell =========================================================== */
+
+.progress-panel__cell {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 7px;
+  padding: 6px 4px 7px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  transition: background 120ms, border-color 120ms;
+  position: relative;
+  min-width: 0;
+}
+
+.progress-panel__cell:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.progress-panel__cell--active {
+  border-color: rgba(96, 192, 255, 0.5);
+  background: rgba(96, 192, 255, 0.08);
+}
+
+.progress-panel__cell-name {
+  font-size: 12px;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.progress-panel__pips {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* pip = one coloured dot (chord or arpeggio score) */
+.progress-panel__pip {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background-color 300ms;
+}
+
+
+/* ===== Detail view ======================================================== */
+
+.progress-panel__detail-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.progress-panel__back-btn {
+  background: transparent;
+  border: none;
+  color: #60c0ff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0 4px 0 0;
+  flex-shrink: 0;
+}
+
+.progress-panel__detail-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.progress-panel__detail-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.progress-panel__detail-section-label {
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.progress-panel__detail-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.progress-panel__detail-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.progress-panel__detail-prog {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.75);
+  width: 64px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.progress-panel__detail-bar-track {
+  flex: 1;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-panel__detail-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 400ms ease;
+}
+
+.progress-panel__detail-score {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.6);
+  width: 28px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.progress-panel__detail-no-data {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.25);
+  font-style: italic;
+}
+
+/* ===== Even sub-score ==================================================== */
+.progress-panel__detail-evenness {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.35);
+  white-space: nowrap;
+}

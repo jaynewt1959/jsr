@@ -165,23 +165,6 @@ struct ContentView: View {
             .background(Color.white.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
-            Divider()
-                .background(Color.white.opacity(0.3))
-                .frame(height: 20)
-                .padding(.horizontal, 4)
-
-            // ─ MODE TOGGLE ───────────────────────────────────────────
-            Picker("Mode", selection: Binding(
-                get: { appState.appMode },
-                set: { appState.setMode($0) }
-            )) {
-                Text("Sight Reading").tag("sightReading")
-                Text("Chord").tag("chordRecognition")
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 220)
-            .colorMultiply(Color(hex: "60c0ff"))
-
             Spacer()
         }
         .padding(.horizontal, 20)
@@ -197,8 +180,7 @@ struct ContentView: View {
                 .font(.system(size: 24, weight: .black))
                 .foregroundColor(.white)
 
-            if appState.appMode == "sightReading",
-               let hand = appState.currentHand, let finger = appState.currentFinger {
+            if let hand = appState.currentHand, let finger = appState.currentFinger {
                 let label = hand == "treble" ? "Right hand" : "Left hand"
                 HStack(spacing: 6) {
                     Text("Next:")
@@ -236,72 +218,58 @@ struct ContentView: View {
     private var controlBar: some View {
         HStack(spacing: 0) {
 
-            // ─ PASSES ───────────────────────────────────────────────
-            HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("PASS")
-                        .font(.system(size: 10, weight: .heavy))
-                        .tracking(2)
-                        .foregroundColor(.white.opacity(0.6))
+            // ─ VARIATION with embedded Prev/Next ───────────────────────────────
+            VStack(alignment: .leading, spacing: 4) {
+                Text("VARIATION")
+                    .font(.system(size: 10, weight: .heavy))
+                    .tracking(2)
+                    .foregroundColor(.white.opacity(0.6))
+                HStack(spacing: 10) {
+                    let varNum = (appState.exerciseIndex % 4) + 1
+                    Button(action: { appState.prevExercise() }) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .heavy))
+                            .foregroundColor(.white.opacity(0.7))
+                            .frame(width: 32, height: 32)
+                            .background(Color.white.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
                     HStack(alignment: .lastTextBaseline, spacing: 4) {
-                        Text("\(min(appState.passCount + 1, 3))")
+                        Text("\(varNum)")
                             .font(.system(size: 32, weight: .heavy, design: .rounded))
-                            .foregroundColor(.yellow)
-                            .monospacedDigit()
-                        Text("/ 3")
-                            .font(.system(size: 16, weight: .bold, design: .rounded))
                             .foregroundColor(.white)
+                            .monospacedDigit()
+                        Text("/ 4")
+                            .font(.system(size: 16, weight: .bold, design: .rounded))
+                            .foregroundColor(.white.opacity(0.5))
                     }
-                }
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 6) {
-                        ForEach(0..<3, id: \.self) { i in
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(i < appState.passCount ? Color.yellow : Color.white.opacity(0.25))
-                                .frame(width: 28, height: 6)
-                        }
-                    }
-                    if appState.appMode == "chordRecognition" {
-                        Text("Variation \(appState.currentVariation + 1) of 4")
-                            .font(.system(size: 12, weight: .semibold))
+                    Button(action: { appState.nextExercise() }) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 16, weight: .heavy))
                             .foregroundColor(.white.opacity(0.7))
-                    } else {
-                        Text("Exercise \((appState.exerciseIndex % 4) + 1) of 4")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.7))
+                            .frame(width: 32, height: 32)
+                            .background(Color.white.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
 
-            Divider().background(Color.white.opacity(0.2)).frame(height: 48)
+            Spacer()
 
-            // ─ BUTTONS ──────────────────────────────────────────────
-            HStack(spacing: 10) {
-                if appState.exerciseComplete {
-                    Button(action: { appState.nextExercise() }) {
-                        Label("Next", systemImage: "arrow.right.circle.fill")
-                            .font(.system(size: 15, weight: .heavy))
-                            .foregroundColor(.black)
-                            .padding(.horizontal, 18)
-                            .padding(.vertical, 10)
-                            .background(Color.green)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
-                }
-                Button(action: { appState.restart() }) {
-                    Label("Restart", systemImage: "arrow.counterclockwise")
-                        .font(.system(size: 15, weight: .heavy))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 10)
-                        .background(Color.blue)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
+            // ─ RESTART (centred, green) ───────────────────────────────────────
+            Button(action: { appState.restart() }) {
+                Label("Restart", systemImage: "arrow.counterclockwise")
+                    .font(.system(size: 15, weight: .heavy))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .background(Color.green)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
 
             Spacer()
 

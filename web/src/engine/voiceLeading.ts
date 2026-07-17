@@ -4,9 +4,9 @@
  * Generates piano exercises using economy-of-movement voice leading.
  * Supports any of 12 major keys × 5 common chord progressions.
  *
- * Right hand (treble): broken arpeggio — bottom note (q), middle (q),
- *   top note (q) — played on beats 2, 3, 4 of each measure.
- * Left hand (bass): chord root as a whole note, beat 1.
+ * Each measure:
+ *   Beat 0 — simultaneous chord group: LH bass root + RH all 3 chord notes.
+ *   Beats 1–3 — RH broken arpeggio (bottom → middle → top).
  */
 
 export type Staff = "treble" | "bass";
@@ -27,15 +27,12 @@ export interface ExerciseNote {
   romanNumeral?: string;
 }
 
-export type AppMode = 'sightReading' | 'chordRecognition';
-
 export interface Exercise {
   notes: ExerciseNote[];
   key: string;
   beatsPerMeasure: number;
   progressionName: string;
   progressionLabel: string;
-  mode: AppMode;
 }
 
 // ---------------------------------------------------------------------------
@@ -390,6 +387,16 @@ function getStartingVoicings(chord: ChordDef): Voicing[] {
 // Exercise builder
 // ---------------------------------------------------------------------------
 
+/**
+ * Build one exercise variant.
+ *
+ * Each measure has 7 notes:
+ *   Beat 0 — simultaneous chord group (4 notes: LH bass root + RH bottom/middle/top)
+ *   Beats 1–3 — RH broken arpeggio (sequential single notes)
+ *
+ * The chord group on beat 0 is detected by the engine via chordGroupOf(), which
+ * groups all notes sharing the same (measure, beat). No explicit mode flag needed.
+ */
 function buildExercise(
   progression: ChordDef[],
   startVoicing: Voicing,
@@ -409,91 +416,34 @@ function buildExercise(
     const [f1, f2, f5] = rhFingering(voicing);
     const lhFinger      = lhFingering(chord.bassRoot, allBassRoots);
 
-    // LH: chord root, whole note, beat 0.
+    // ─ Beat 0: simultaneous chord group (LH + RH block chord) ─
+    // All 4 notes share the same (measure, beat) so chordGroupOf() groups them.
+    // LH root is a whole note (sustained through the measure).
     notes.push({
       pitch: chord.bassRoot, duration: "w", staff: "bass",
       finger: lhFinger, measure: m, beat: 0,
     });
+    notes.push({
+      pitch: voicing[0], duration: "q", staff: "treble",
+      finger: f1, measure: m, beat: 0,
+      romanNumeral: chord.roman, chordSymbol: chord.symbol,
+    });
+    notes.push({
+      pitch: voicing[1], duration: "q", staff: "treble",
+      finger: f2, measure: m, beat: 0,
+    });
+    notes.push({
+      pitch: voicing[2], duration: "q", staff: "treble",
+      finger: f5, measure: m, beat: 0,
+    });
 
-    // RH: beats 1–3, broken arpeggio.
-    const treble: Array<{ pitch: number; duration: Duration; beat: number; finger: number }> = [
-      { pitch: voicing[0], duration: "q", beat: 1, finger: f1 },
-      { pitch: voicing[1], duration: "q", beat: 2, finger: f2 },
-      { pitch: voicing[2], duration: "q", beat: 3, finger: f5 },
-    ];
-
-    for (const t of treble) {
-      notes.push({
-        pitch: t.pitch, duration: t.duration, staff: "treble",
-        finger: t.finger, measure: m, beat: t.beat,
-        chordSymbol:  t.beat === 1 ? chord.symbol : undefined,
-        romanNumeral: t.beat === 1 ? chord.roman  : undefined,
-      });
-    }
+    // ─ Beats 1–3: RH broken arpeggio (sequential) ─
+    notes.push({ pitch: voicing[0], duration: "q", staff: "treble", finger: f1, measure: m, beat: 1 });
+    notes.push({ pitch: voicing[1], duration: "q", staff: "treble", finger: f2, measure: m, beat: 2 });
+    notes.push({ pitch: voicing[2], duration: "q", staff: "treble", finger: f5, measure: m, beat: 3 });
   }
 
-  return { notes, key: keyName, beatsPerMeasure: 4, progressionName, progressionLabel, mode: 'sightReading' };
-}
-
-// ---------------------------------------------------------------------------
-// Chord recognition exercise builder
-// ---------------------------------------------------------------------------
-
-/**
- * Build a chord-recognition exercise.
- *
- * Generates all `starts` (up to 5 starting voicings) as 5 consecutive measures.
- * Each measure contains 4 chord groups (beats 0–3), one per chord in the progression.
- * Each chord group = 1 bass quarter note + 3 treble quarter notes (block chord).
- * No fingering. Roman numeral only (no chord name symbol).
- */
-function buildChordRecognitionExercise(
-  progression: ChordDef[],
-  starts: Voicing[],
-  keyName: string,
-  progressionName: string,
-  progressionLabel: string,
-): Exercise {
-  const notes: ExerciseNote[] = [];
-  const allBassRoots = progression.map(c => c.bassRoot);
-
-  const NUM_VARIATIONS = 4;
-  for (let m = 0; m < NUM_VARIATIONS; m++) {
-    const startVoicing = starts[m % starts.length];
-    let prevVoicing = startVoicing;
-
-    for (let c = 0; c < progression.length; c++) {
-      const chord   = progression[c];
-      const voicing = c === 0 ? startVoicing : bestVoicing(chord, prevVoicing);
-      prevVoicing   = voicing;
-
-      // Treble: 3-note block chord at beat c — roman numeral on first note only.
-      for (let j = 0; j < 3; j++) {
-        notes.push({
-          pitch: voicing[j], duration: 'q', staff: 'treble',
-          finger: 0, measure: m, beat: c,
-          chordSymbol:  undefined,
-          romanNumeral: j === 0 ? chord.roman : undefined,
-        });
-      }
-
-      // Bass: root quarter note at beat c.
-      notes.push({
-        pitch: chord.bassRoot, duration: 'q', staff: 'bass',
-        finger: lhFingering(chord.bassRoot, allBassRoots),
-        measure: m, beat: c,
-      });
-    }
-  }
-
-  return {
-    notes,
-    key: keyName,
-    beatsPerMeasure: 4,
-    progressionName,
-    progressionLabel,
-    mode: 'chordRecognition',
-  };
+  return { notes, key: keyName, beatsPerMeasure: 4, progressionName, progressionLabel };
 }
 
 // ---------------------------------------------------------------------------
@@ -518,18 +468,3 @@ export function getExercise(
   );
 }
 
-export function getChordRecognitionExercise(
-  keyId: string = "C",
-  progressionId: string = "50s",
-): Exercise {
-  const key         = KEYS.find(k => k.id === keyId)                ?? KEYS[0];
-  const template    = PROGRESSIONS.find(p => p.id === progressionId) ?? PROGRESSIONS[1];
-  const progression = buildProgression(key, template);
-  const starts      = getStartingVoicings(progression[0]);
-  return buildChordRecognitionExercise(
-    progression, starts,
-    `${key.id} major`,
-    template.name,
-    template.label,
-  );
-}

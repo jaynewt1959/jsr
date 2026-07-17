@@ -10,9 +10,7 @@ final class AppState: ObservableObject {
 
     // MARK: - Exercise progress (populated by JS bridge)
 
-    @Published var passCount: Int = 0
     @Published var exerciseIndex: Int = 0
-    @Published var exerciseComplete: Bool = false
     @Published var wrongNoteActive: Bool = false
 
     /// "treble" or "bass" — which hand should play next.
@@ -31,7 +29,6 @@ final class AppState: ObservableObject {
     @Published var appMode: String = UserDefaults.standard.string(forKey: "jsr.appMode") ?? "sightReading"
     /// In chord mode: 0-based index of the measure (variation) currently being played.
     @Published var currentVariation: Int = 0
-
     // MARK: - MIDI status (populated by JS bridge)
 
     /// True once the user has tapped Connect MIDI and CoreMIDI has started.
@@ -51,6 +48,10 @@ final class AppState: ObservableObject {
 
     func nextExercise() {
         callJS?("if(window.jsr){window.jsr.nextExercise()}")
+    }
+
+    func prevExercise() {
+        callJS?("if(window.jsr){window.jsr.prevExercise()}")
     }
 
     func setKey(_ key: String) {
@@ -90,9 +91,7 @@ final class AppState: ObservableObject {
 
     /// Called from the WKScriptMessageHandler on the main thread.
     func applyBridgeUpdate(_ json: [String: Any]) {
-        if let v = json["passCount"]        as? Int    { passCount        = v }
         if let v = json["exerciseIndex"]    as? Int    { exerciseIndex    = v }
-        if let v = json["exerciseComplete"] as? Bool   { exerciseComplete = v }
         if let v = json["wrongNoteActive"]  as? Bool   { wrongNoteActive  = v }
         if let v = json["currentHand"]      as? String { currentHand      = v }
         else if json["currentHand"] is NSNull          { currentHand      = nil }

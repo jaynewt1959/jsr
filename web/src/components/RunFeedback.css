@@ -1,0 +1,82 @@
+/* RunFeedback.css — JSR per-run scorecard */
+
+.run-feedback {
+  width: 100%;
+  background: #111430;
+  border-radius: 10px;
+  padding: 8px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-sizing: border-box;
+  /* Always reserve space so the ProgressPanel below never shifts. */
+  min-height: 52px;
+}
+
+/* ===== Stats line ========================================================= */
+
+.run-feedback__line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.run-feedback__run-label {
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.55);
+  letter-spacing: 0.2px;
+}
+
+.run-feedback__score-label {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 12px;
+}
+
+.run-feedback__score {
+  font-size: 18px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.run-feedback__sep {
+  color: rgba(255, 255, 255, 0.2);
+  font-size: 12px;
+}
+
+.run-feedback__clean {
+  color: #22c55e;
+  font-weight: 700;
+}
+
+.run-feedback__errors {
+  color: #ef4444;
+  font-weight: 700;
+}
+
+.run-feedback__metric {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+}
+
+.run-feedback__metric strong {
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 700;
+}
+
+.run-feedback__avg {
+  color: #60c0ff;
+  font-size: 12px;
+}
+
+.run-feedback__avg strong {
+  font-weight: 800;
+}
+
+.run-feedback__avg-count {
+  font-weight: 400;
+  opacity: 0.7;
+}
+

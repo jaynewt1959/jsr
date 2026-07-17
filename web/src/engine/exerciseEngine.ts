@@ -12,8 +12,8 @@
  * No side effects. React state holds the latest ExerciseState.
  */
 
-import type { Exercise, ExerciseNote, AppMode } from "./voiceLeading";
-import { getExercise, getChordRecognitionExercise } from "./voiceLeading";
+import type { Exercise, ExerciseNote } from "./voiceLeading";
+import { getExercise } from "./voiceLeading";
 
 // ---------------------------------------------------------------------------
 // State types
@@ -28,24 +28,23 @@ export interface ExerciseState {
   currentNoteIndex: number;
   /** Per-note status array, parallel to exercise.notes. */
   noteStatuses: NoteStatus[];
-  /** Number of consecutive error-free runs since the exercise started. */
-  passCount: number;
   /** True when the player just played the wrong note (cleared on correct). */
   wrongNoteActive: boolean;
   /** True if any mistake has been made in the current run (cleared on run reset). */
   mistakeThisRun: boolean;
   /** MIDI note number most recently played incorrectly, or null. */
   wrongNotePlayed: number | null;
-  /** Index of the exercise in the session (0–4). */
+  /** Index of the exercise variant (0–3), cycling via Next / Prev. */
   exerciseIndex: number;
-  /** True when 3 passes are complete and we should advance. */
-  exerciseComplete: boolean;
   /** Currently selected key id, e.g. "G", "Bb". */
   selectedKey: string;
   /** Currently selected progression id, e.g. "pop", "50s". */
   selectedProgression: string;
-  /** Current training mode. */
-  appMode: AppMode;
+  /** Total complete runs played since the last config change. */
+  runCount: number;
+  /** True while a run has just finished and the countdown is ticking.
+   *  Notes are ignored during this window. */
+  runComplete: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -74,38 +73,31 @@ export function chordGroupPitches(notes: ExerciseNote[], idx: number): number[] 
   return chordGroupOf(notes, idx).map(i => notes[i].pitch);
 }
 
-function buildInitialStatuses(notes: ExerciseNote[], mode: AppMode = 'sightReading'): NoteStatus[] {
-  if (mode === 'chordRecognition') {
-    // First chord group → 'current', rest → 'pending'.
-    const firstGroup = new Set(chordGroupOf(notes, 0));
-    return notes.map((_, i) => (firstGroup.has(i) ? 'current' : 'pending'));
-  }
-  return notes.map((_, i) => (i === 0 ? "current" : "pending"));
+function buildInitialStatuses(notes: ExerciseNote[]): NoteStatus[] {
+  // Always mark the first chord group (beat-0 simultaneous notes) as 'current'.
+  // For single-note starts this is just [0]; for chord groups it covers all members.
+  const firstGroup = new Set(chordGroupOf(notes, 0));
+  return notes.map((_, i) => (firstGroup.has(i) ? 'current' : 'pending'));
 }
 
 export function initialState(
   exerciseIndex: number = 0,
   key: string = "C",
   progression: string = "50s",
-  mode: AppMode = 'sightReading',
 ): ExerciseState {
-  const exercise =
-    mode === 'chordRecognition'
-      ? getChordRecognitionExercise(key, progression)
-      : getExercise(exerciseIndex, key, progression);
+  const exercise = getExercise(exerciseIndex, key, progression);
   return {
     exercise,
     currentNoteIndex: 0,
-    noteStatuses: buildInitialStatuses(exercise.notes, mode),
-    passCount: 0,
+    noteStatuses: buildInitialStatuses(exercise.notes),
     wrongNoteActive: false,
     mistakeThisRun: false,
     wrongNotePlayed: null,
     exerciseIndex,
-    exerciseComplete: false,
     selectedKey: key,
     selectedProgression: progression,
-    appMode: mode,
+    runCount: 0,
+    runComplete: false,
   };
 }
 
@@ -116,39 +108,64 @@ export function initialState(
 export type Action =
   | { type: "NOTE_PLAYED"; midiNote: number }
   | { type: "CHORD_ACCEPTED" }
-  | { type: "ADVANCE_EXERCISE" }
-  | { type: "RESTART_EXERCISE" }
+  | { type: "ADVANCE_EXERCISE" }   // next variant (wraps 3 → 0)
+  | { type: "PREV_EXERCISE" }      // previous variant (wraps 0 → 3)
+  | { type: "RESTART_EXERCISE" }   // clear errors, restart current variant
+  | { type: "BEGIN_NEXT_RUN" }     // start the next loop after a run completes
   | { type: "SET_CONFIG_KEY"; key: string }
-  | { type: "SET_CONFIG_PROGRESSION"; progression: string }
-  | { type: "SET_MODE"; mode: AppMode };
+  | { type: "SET_CONFIG_PROGRESSION"; progression: string };
 
 export function reduce(state: ExerciseState, action: Action): ExerciseState {
   switch (action.type) {
-    case "NOTE_PLAYED":
-      return state.appMode === 'chordRecognition'
+    case "NOTE_PLAYED": {
+      // Auto-detect chord group vs single note from the exercise structure.
+      const targetPitches = chordGroupPitches(state.exercise.notes, state.currentNoteIndex);
+      return targetPitches.length > 1
         ? handleNotePlayedChordMode(state, action.midiNote)
         : handleNotePlayed(state, action.midiNote);
+    }
     case "CHORD_ACCEPTED":
       return handleChordAccepted(state);
-    case "ADVANCE_EXERCISE": {
-      const next = state.exerciseIndex + 1;
-      return initialState(next, state.selectedKey, state.selectedProgression, state.appMode);
-    }
+    case "BEGIN_NEXT_RUN":
+      return handleBeginNextRun(state);
+    case "ADVANCE_EXERCISE":
+      return initialState((state.exerciseIndex + 1) % 4, state.selectedKey, state.selectedProgression);
+    case "PREV_EXERCISE":
+      return initialState((state.exerciseIndex + 3) % 4, state.selectedKey, state.selectedProgression);
     case "RESTART_EXERCISE":
-      return initialState(state.exerciseIndex, state.selectedKey, state.selectedProgression, state.appMode);
+      return initialState(state.exerciseIndex, state.selectedKey, state.selectedProgression);
     case "SET_CONFIG_KEY":
-      return initialState(0, action.key, state.selectedProgression, state.appMode);
+      return initialState(0, action.key, state.selectedProgression);
     case "SET_CONFIG_PROGRESSION":
-      return initialState(0, state.selectedKey, action.progression, state.appMode);
-    case "SET_MODE":
-      return initialState(0, state.selectedKey, state.selectedProgression, action.mode);
+      return initialState(0, state.selectedKey, action.progression);
     default:
       return state;
   }
 }
 
+// ---------------------------------------------------------------------------
+// BEGIN_NEXT_RUN — called by App.tsx when the countdown expires
+// ---------------------------------------------------------------------------
+
+function handleBeginNextRun(state: ExerciseState): ExerciseState {
+  const resetStatuses = buildInitialStatuses(state.exercise.notes);
+  return {
+    ...state,
+    noteStatuses: resetStatuses,
+    currentNoteIndex: 0,
+    wrongNoteActive: false,
+    mistakeThisRun: false,
+    wrongNotePlayed: null,
+    runComplete: false,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Sight-reading note handler
+// ---------------------------------------------------------------------------
+
 function handleNotePlayed(state: ExerciseState, midiNote: number): ExerciseState {
-  if (state.exerciseComplete) return state;
+  if (state.runComplete) return state; // ignore notes during countdown
 
   const expected = state.exercise.notes[state.currentNoteIndex];
   if (!expected) return state;
@@ -156,9 +173,6 @@ function handleNotePlayed(state: ExerciseState, midiNote: number): ExerciseState
   const isCorrect = midiNote === expected.pitch;
 
   if (!isCorrect) {
-    // Stay on the same note. Keep its status "current" (blue) so the
-    // header banner "play the blue note" is accurate — the target note
-    // must remain visually identifiable. wrongNoteActive drives the banner.
     return {
       ...state,
       wrongNoteActive: true,
@@ -167,81 +181,38 @@ function handleNotePlayed(state: ExerciseState, midiNote: number): ExerciseState
     };
   }
 
-  // Correct note played.
+  // Correct note — mark and advance.
   const newStatuses = [...state.noteStatuses];
   newStatuses[state.currentNoteIndex] = "correct";
-
   const nextIndex = state.currentNoteIndex + 1;
   const isRunComplete = nextIndex >= state.exercise.notes.length;
 
   if (isRunComplete) {
-    // Check whether this run was error-free (all statuses "correct" —
-    // which they must be since we just set the last one to "correct").
-    // A "wrong" in this run means wrongNoteActive was set at some point.
-    // We track it via a flag: if wrongNoteActive was ever true during this
-    // run, the run is not clean. We use a simple approach: if wrong was
-    // active at any point, it would have been left set. The user replays
-    // the correct note and clears it each time via isCorrect path above,
-    // but the wrongNoteActive flag itself isn't cleared here. So we need
-    // to track run-level errors differently.
-    //
-    // Simple approach: count a pass only if all statuses are "correct"
-    // (none ever stayed "wrong" — which they can't since wrong->correct
-    // is the only path). Actually every wrong note forces a re-play of the
-    // same note until correct, so by the time we reach the end of a run,
-    // every note in noteStatuses is "correct". The question is: did the
-    // user make any mistake during this run?
-    //
-    // We track mistakes with wrongNoteActive on the current run.
-    // If wrongNoteActive is false right now (the last note came in clean),
-    // AND no "wrong" was ever permanently lodged, this could be a clean run.
-    // But we need to track "was wrong ever triggered this run?".
-    //
-    // Add a `mistakeThisRun` field to track this properly:
-    const runWasClean = !state.mistakeThisRun;
-    const newPassCount = runWasClean ? state.passCount + 1 : 0;
-    const exerciseComplete = newPassCount >= 3;
-
-    if (exerciseComplete) {
-      return {
-        ...state,
-        noteStatuses: newStatuses,
-        currentNoteIndex: nextIndex,
-        passCount: newPassCount,
-        wrongNoteActive: false,
-        mistakeThisRun: false,
-        wrongNotePlayed: null,
-        exerciseComplete: true,
-      };
-    }
-
-    // Start the next run: reset statuses to pending/current.
-    const resetStatuses = buildInitialStatuses(state.exercise.notes);
+    // Signal run complete — App.tsx starts the countdown.
     return {
       ...state,
-      noteStatuses: resetStatuses,
-      currentNoteIndex: 0,
-      passCount: newPassCount,
+      noteStatuses: newStatuses,
+      currentNoteIndex: nextIndex,
       wrongNoteActive: false,
       mistakeThisRun: false,
       wrongNotePlayed: null,
+      runCount: state.runCount + 1,
+      runComplete: true,
     };
   }
 
-  // Not end of run — advance to next note.
   newStatuses[nextIndex] = "current";
   return {
     ...state,
     noteStatuses: newStatuses,
     currentNoteIndex: nextIndex,
     wrongNoteActive: false,
-    // mistakeThisRun stays true if it was set earlier in this run
     wrongNotePlayed: null,
   };
 }
 
 // ---------------------------------------------------------------------------
-// Chord mode handlers
+// Chord recognition handlers
 // ---------------------------------------------------------------------------
 
 /**
@@ -249,53 +220,33 @@ function handleNotePlayed(state: ExerciseState, midiNote: number): ExerciseState
  * are simultaneously held. Marks the group correct and advances.
  */
 function handleChordAccepted(state: ExerciseState): ExerciseState {
-  if (state.exerciseComplete) return state;
+  if (state.runComplete) return state;
 
   const notes = state.exercise.notes;
   const groupIndices = chordGroupOf(notes, state.currentNoteIndex);
   if (groupIndices.length === 0) return state;
 
-  // Mark all notes in the current chord group as correct.
   const newStatuses = [...state.noteStatuses];
   for (const i of groupIndices) newStatuses[i] = 'correct';
 
-  // Find the first note of the next chord group.
   const lastInGroup = Math.max(...groupIndices);
   const nextIndex   = lastInGroup + 1;
   const isRunComplete = nextIndex >= notes.length;
 
   if (isRunComplete) {
-    const runWasClean  = !state.mistakeThisRun;
-    const newPassCount = runWasClean ? state.passCount + 1 : 0;
-    const exerciseComplete = newPassCount >= 3;
-
-    if (exerciseComplete) {
-      return {
-        ...state,
-        noteStatuses: newStatuses,
-        currentNoteIndex: nextIndex,
-        passCount: newPassCount,
-        wrongNoteActive: false,
-        mistakeThisRun: false,
-        wrongNotePlayed: null,
-        exerciseComplete: true,
-      };
-    }
-
-    // Next run: reset all statuses, move back to first chord group.
-    const resetStatuses = buildInitialStatuses(notes, 'chordRecognition');
+    // Signal run complete — App.tsx starts the countdown.
     return {
       ...state,
-      noteStatuses: resetStatuses,
-      currentNoteIndex: 0,
-      passCount: newPassCount,
+      noteStatuses: newStatuses,
+      currentNoteIndex: nextIndex,
       wrongNoteActive: false,
       mistakeThisRun: false,
       wrongNotePlayed: null,
+      runCount: state.runCount + 1,
+      runComplete: true,
     };
   }
 
-  // Advance: mark next chord group as current.
   const nextGroupIndices = chordGroupOf(notes, nextIndex);
   for (const i of nextGroupIndices) newStatuses[i] = 'current';
 
@@ -308,19 +259,11 @@ function handleChordAccepted(state: ExerciseState): ExerciseState {
   };
 }
 
-/**
- * In chord recognition mode a NOTE_PLAYED means a wrong (non-target) note
- * was pressed. We flag the error but do not advance.
- */
+/** Wrong non-target note pressed in chord mode — flag error, do not advance. */
 function handleNotePlayedChordMode(state: ExerciseState, midiNote: number): ExerciseState {
-  if (state.exerciseComplete) return state;
+  if (state.runComplete) return state;
   const target = chordGroupPitches(state.exercise.notes, state.currentNoteIndex);
-  if (target.includes(midiNote)) {
-    // A correct target note was pressed (partial chord — App.tsx will dispatch
-    // CHORD_ACCEPTED when the group is complete). No state change needed here.
-    return state;
-  }
-  // Wrong note.
+  if (target.includes(midiNote)) return state; // correct partial chord press
   return {
     ...state,
     wrongNoteActive: true,
@@ -336,9 +279,4 @@ function handleNotePlayedChordMode(state: ExerciseState, midiNote: number): Exer
 /** The note the player must play right now. */
 export function currentNote(state: ExerciseState): ExerciseNote | null {
   return state.exercise.notes[state.currentNoteIndex] ?? null;
-}
-
-/** Human-readable pass progress, e.g. "2 / 3". */
-export function passLabel(state: ExerciseState): string {
-  return `${state.passCount} / 3`;
 }
