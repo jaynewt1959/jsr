@@ -1,70 +1,114 @@
-# JSR — Jay's Sight Reading: Project Status
+# JSR — Jay's Sight Reading: Project Context
 
 ## What this app is
 
-iPad piano sight-reading trainer. Displays a chord progression on a grand staff.
-Player reads and plays notes with a MIDI keyboard. App tracks pass count.
+iPad piano practice trainer for chord progressions on a grand staff.
+The player connects a MIDI keyboard and works through 12 keys × 5 progressions × 4 voicing variants.
+Each exercise loops continuously; a per-run scorecard tracks accuracy, rhythm consistency, and evenness.
 
 Architecture: SwiftUI shell (iPad) → WKWebView (React/JS exercise engine) →
 Hummingbird WebSocket server → CoreMIDI → Nord Stage 4 (or any MIDI device).
 
 ---
 
-## What works
+## Exercise structure
 
-- **MIDI**: CoreMIDI connects on WebSocket open (`startMidi`). Hot-plug via
-  `msgObjectAdded`/`msgSetupChanged`. Periodic 2-second fallback scan.
-  "Tap to scan" banner in UI. Buffer size fixed (64, was 1 — was dropping notes).
-- **Exercise engine** (`web/src/engine/exerciseEngine.ts`): pure reducer, tracks
-  note index, pass count, wrong-note state. Sequential note-by-note playback.
-- **Voice leading** (`web/src/engine/voiceLeading.ts`): economy-of-movement
-  inversion algorithm. For each chord, picks the inversion (root/1st/2nd) that
-  minimises total semitone movement from the previous chord.
-  - C major I–vi–IV–V: C-E-G → C-E-A → C-F-A → D-G-B ✓
-  - RH fingering: 1-3-5 (normal), 1-2-5 (major 3rd + wide top interval)
-  - LH fingering: linear map of bass pitch range → fingers 5..1
-  - 4 starting voicings (root pos, 1st inv, 2nd inv, root pos high) give 4
-    distinct exercise variants cycling on index % 4.
-- **Note sequencing per measure**: LH bass root (beat 1, whole note) → RH
-  arpeggio beat 2, 3, 4 (three quarter notes). Beat 1 is a visual rest in treble.
-- **Wrong note handling**: target note stays blue; banner says "play the blue note".
-- **Pass count**: displays 1-based (working on pass N, not N completed).
-- **App icon**: forest green (#0D2D18) to distinguish from JSP (navy #0F172A).
-- **Build**: `ENABLE_USER_SCRIPT_SANDBOXING: NO` in project.yml fixes sandbox
-  errors in the Build Web UI / Copy Web UI to Bundle script phases.
-- **Layout**: controls moved below score (full-width score), horizontal control
-  strip: Pass counter | Restart/Next buttons | MIDI status.
+Each measure contains **7 notes** in two phases.
+All notes at `(measure, beat=0)` share the same coordinates and are detected as a
+chord group by `chordGroupOf()`; beats 1–3 each have a single note and are sequential.
+
+| Beat | Staff  | Content                          | Detection         |
+|------|--------|----------------------------------|-------------------|
+| 0    | Bass   | LH chord root (whole note)       | chord group (×4)  |
+| 0    | Treble | RH block chord (3 notes, ”/q)    | chord group (×4)  |
+| 1    | Treble | RH arpeggio — bottom note        | sequential (×1)   |
+| 2    | Treble | RH arpeggio — middle note        | sequential (×1)   |
+| 3    | Treble | RH arpeggio — top note           | sequential (×1)   |
+
+No `AppMode` type exists. The engine calls `chordGroupPitches(notes, idx).length > 1`
+at the current index to decide chord vs. sequential handling.
+
+**4 measures** per exercise, **4 voicing variants** (index % 4, different starting
+inversion), **5 progressions** (Blues, 50s, Pop, Circle, Minor Feel), **12 keys**.
 
 ---
 
-## What is broken / abandoned
+## Loop practice
 
-### Score rendering — VexFlow scrapped
-
-VexFlow 5.0.0 cannot reliably render a 4/4 measure with a quarter rest on beat 1
-followed by three quarter notes. Multiple approaches (unshift, proper grand-staff
-joinVoices, clef param on rest) all produce garbled output (rest bleeding into
-next measure, notes misaligned). VexFlow is removed from active use.
-
-**Plan**: replace with static grand-staff images (one per key) provided by the
-user, with custom SVG overlays for note highlighting — same approach used in JSP.
+- The exercise **loops continuously** — no pass count, no “exercise complete” gate.
+- On run completion: `runComplete = true`, stats computed, `BEGIN_NEXT_RUN` dispatched immediately.
+- `RunFeedback` panel (always visible, fixed height) shows the scorecard.
+- Stats latch until `currentNoteIndex > 0` in the new run (first correct note played).
+- **← Prev / → Next** (chevrons flanking the variation number) cycle the 4 voicing
+  variants with wraparound. **↺ Restart** (green, centre) resets the current variant.
 
 ---
 
-## Next steps
+## Progress metrics
 
-1. User to provide grand staff images for each key (12 keys × inversions as needed).
-2. Implement a custom SVG renderer that:
-   - Displays the background staff image
-   - Overlays note heads at computed pixel positions
-   - Colours note heads by status (blue = current, grey = correct, red = wrong)
-   - Shows finger numbers as text annotations
-3. Wire the renderer to the existing `exerciseEngine` state (noteStatuses array).
-4. Wire it to the existing `voiceLeading` output (ExerciseNote array with pitches,
-   fingers, staff, beat positions).
+Persisted in `localStorage` key `jsr.progress` via `web/src/engine/progressStore.ts`.
 
-The exercise engine, voice-leading algorithm, MIDI stack, and SwiftUI shell are
-all solid and do not need to change for this work.
+```typescript
+interface SessionRecord {
+  key: string; progression: string; exerciseIndex?: number;
+  accuracy: number;        // 0–100
+  evenness: number | null; // velocity CV → 0–100; null for on-screen taps
+  rhythm:   number | null; // inter-note timing CV → 0–100
+  errors:   number;        // wrong note presses this run
+  timestamp: number;
+}
+```
+
+**Composite score**: `accuracy×40% + rhythm×35% + evenness×25%`
+(weights redistributed when a metric is unavailable).
+
+`ProgressPanel` shows a 12-key heat map (one pip per key, grey→red→amber→green).
+Tapping a key opens a per-progression drill-down with R% and E% sub-scores.
+
+---
+
+## Score rendering
+
+`web/src/components/ScoreView.tsx` uses **VexFlow 5 Factory + EasyScore API**.
+
+- Beat 0 treble: parenthesised block chord `(C4 E4 G4)/q`; bass: whole note `C3/w`.
+- Beats 1–3: individual quarter notes.
+- Colours: pending = near-black, current chord = orange, current arpeggio/bass = blue,
+  correct = grey, wrong = red.
+- Chord symbols (e.g. `Am  (vi)`) rendered as SVG text above treble stave.
+- Finger numbers rendered via VexFlow `Annotation` above/below each note.
+
+---
+
+## MIDI
+
+- CoreMIDI client started by Swift on user tap ("Connect MIDI").
+- Hummingbird WebSocket relays every note-on/off as `NoteEventMessage`
+  (note, velocity, isOn, sourceName). Velocity is used for the evenness metric.
+- Hot-plug via `msgObjectAdded`/`msgSetupChanged` + 1-second polling fallback.
+- `flushPending()` discards pre-connect key presses.
+- Buffer size fixed at 64 (was 1 — was dropping notes).
+
+---
+
+## SwiftUI / JS bridge
+
+**JS → Swift** (`jsrBridge` message handler):
+`exerciseIndex`, `wrongNoteActive`, `currentHand`, `currentFinger`,
+`exerciseKey`, `progressionName`, `midiRunning`, `midiConnected`, `midiSourceName`, `currentVariation`.
+
+**Swift → JS** (`window.jsr.*`):
+`restart`, `nextExercise`, `prevExercise`, `setKey`, `setProgression`, `connectMidi`, `disconnectMidi`.
+
+---
+
+## Build notes
+
+- `ENABLE_USER_SCRIPT_SANDBOXING: NO` in `project.yml` is required (fixes
+  "Build Web UI" and "Copy Web UI to Bundle" script phase sandbox errors).
+- App icon: forest green `#0D2D18` (distinguishes from JSP navy `#0F172A`).
+- Web layer built with `npm run build` in `web/`; output lands in `web/dist/` and
+  is bundled into the app by the Xcode copy phase.
 
 ---
 
@@ -72,16 +116,28 @@ all solid and do not need to change for this work.
 
 | File | Purpose |
 |---|---|
-| `JSR/ContentView.swift` | SwiftUI layout: header, score WebView, control bar |
-| `JSR/AppState.swift` | Published state bridged from JS via WKScriptMessageHandler |
+| `JSR/ContentView.swift` | SwiftUI layout: header, WebView, control bar (variation, Restart, MIDI) |
+| `JSR/AppState.swift` | @Published bridge state; JS call helpers |
 | `JSR/EngineHost.swift` | Hummingbird server + MidiCoordinator lifecycle |
 | `Sources/Server/MidiCoordinator.swift` | MIDI start/stop/refresh, WebSocket broadcast |
 | `Sources/MIDI/MidiInput.swift` | CoreMIDI client, hot-plug, event stream |
 | `Sources/Server/WebSocketHub.swift` | Broadcast to all WS clients |
-| `web/src/engine/voiceLeading.ts` | Chord definitions + economy-of-movement voicing |
-| `web/src/engine/exerciseEngine.ts` | Note sequencing reducer |
-| `web/src/engine/fingering.ts` | (Unused — was JSP scale fingering, does not fit) |
-| `web/src/hooks/useMidi.ts` | WS connection, sends startMidi on open |
-| `web/src/App.tsx` | React root, bridges engine state to SwiftUI |
-| `web/src/components/ScoreView.tsx` | VexFlow renderer — TO BE REPLACED |
+| `web/src/engine/voiceLeading.ts` | Chord definitions, voicing algorithm, exercise builder |
+| `web/src/engine/exerciseEngine.ts` | Pure reducer: run count, chord auto-detection, wrong-note state |
+| `web/src/engine/progressStore.ts` | localStorage persistence: session records, aggregation, scoreColor |
+| `web/src/hooks/useMidi.ts` | WebSocket connection; delivers note events with velocity |
+| `web/src/App.tsx` | React root: unified handleNote, metrics accumulation, bridge |
+| `web/src/components/ScoreView.tsx` | VexFlow 5 grand-staff renderer (chord group + arpeggio) |
+| `web/src/components/PianoKeyboard.tsx` | On-screen keyboard (tap input, flash feedback) |
+| `web/src/components/RunFeedback.tsx` | Per-run scorecard panel (always visible, fixed height) |
+| `web/src/components/ProgressPanel.tsx` | 12-key heat map with per-progression drill-down |
 | `project.yml` | XcodeGen spec |
+
+---
+
+## Known limitations / future work
+
+- Rhythm metric measures internal timing consistency (no metronome target); a click
+  track would make it more meaningful for rhythmic accuracy.
+- No export / sharing of progress data.
+- `web/src/engine/fingering.ts` is unused (was JSP scale fingering, does not fit JSR).`
