@@ -13,6 +13,13 @@ npm run build      # Production build → dist/  (bundled into the Xcode app)
 npm run lint       # oxlint
 ```
 
+**Full deploy** (from the project root `jsr/`):
+
+```bash
+make          # web build + iOS install
+make deploy   # web build + iOS install + auto-launch
+```
+
 ## Source layout
 
 ```

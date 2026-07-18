@@ -110,6 +110,22 @@ Tapping a key opens a per-progression drill-down with R% and E% sub-scores.
 - Web layer built with `npm run build` in `web/`; output lands in `web/dist/` and
   is bundled into the app by the Xcode copy phase.
 
+## Build & deploy workflow (Makefile)
+
+A `Makefile` at the project root wraps the full build pipeline. Run from `jsr/`:
+
+```bash
+make          # web build + iOS install on iPad  (default)
+make deploy   # web + iOS + auto-launch the app
+make web      # React/Vite build only
+make ios      # iOS xcodebuild + install only
+make launch   # launch already-installed app on iPad
+```
+
+The iPad UDID is hardcoded in `DEVICE_ID` at the top of the Makefile.
+Update it if the device changes (`xcrun devicectl list devices | grep iPad`).
+No Xcode GUI required — `xcodebuild` targets the device directly.
+
 ---
 
 ## Key file map
