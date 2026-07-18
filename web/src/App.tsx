@@ -160,7 +160,8 @@ export default function App() {
     totalAttempts:     0,
     correctVelocities: [] as number[],
     hasVelocityData:   false,
-    noteTimestamps:    [] as number[],
+    /** Timestamps + measure/beat context for within-measure rhythm calculation. */
+    noteTimestampCtx:  [] as Array<{ t: number; measure: number; beat: number }>,
     stalesCount:       0,
   });
 
@@ -170,7 +171,7 @@ export default function App() {
       totalAttempts:     0,
       correctVelocities: [],
       hasVelocityData:   false,
-      noteTimestamps:    [],
+      noteTimestampCtx:  [],
       stalesCount:       0,
     };
   }
@@ -322,7 +323,7 @@ export default function App() {
       // Advance: N-1 → N-2, N → N-1.
       staleTrackerRef.current = { prevNote: tracker.currentNote, currentNote: note };
 
-      metricsRef.current.noteTimestamps.push(performance.now());
+      metricsRef.current.noteTimestampCtx.push({ t: performance.now(), measure: cn.measure, beat: cn.beat });
       if (velocity !== undefined && velocity > 0) {
         metricsRef.current.correctVelocities.push(velocity);
         metricsRef.current.hasVelocityData = true;
@@ -420,7 +421,17 @@ export default function App() {
     const evenness  = m.hasVelocityData
       ? computeEvenness(m.correctVelocities)
       : null;
-    const rhythm    = computeRhythm(m.noteTimestamps);
+    // Only measure beat-to-beat intervals within the same measure.
+    // Cross-measure gaps include chord-playing time and are far larger
+    // than arpeggio intervals, which would inflate CV and falsely lower the score.
+    const withinMeasureIntervals: number[] = [];
+    const ctx = m.noteTimestampCtx;
+    for (let i = 1; i < ctx.length; i++) {
+      if (ctx[i].measure === ctx[i - 1].measure && ctx[i].beat === ctx[i - 1].beat + 1) {
+        withinMeasureIntervals.push(ctx[i].t - ctx[i - 1].t);
+      }
+    }
+    const rhythm    = computeRhythm(withinMeasureIntervals);
     const comp      = compositeScore(accuracy, evenness, rhythm);
 
     // ─ Show scorecard ─

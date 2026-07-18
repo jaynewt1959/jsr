@@ -104,21 +104,19 @@ export function compositeScore(
 }
 
 /**
- * Compute rhythm consistency (0–100) from a list of note timestamps (ms).
- * Returns null when fewer than 4 samples are available.
- * Measures inter-note interval coefficient of variation:
- * a perfectly steady pace scores 100; an erratic pace scores low.
+ * Compute rhythm consistency (0–100) from a list of within-measure
+ * beat-to-beat intervals (ms).  Call site is responsible for filtering
+ * out cross-measure gaps (which include the chord press and are much
+ * larger than arpeggio intervals, inflating CV artificially).
+ *
+ * Returns null when fewer than 3 intervals are available.
  */
-export function computeRhythm(timestamps: number[]): number | null {
-  if (timestamps.length < 4) return null;
-  const intervals: number[] = [];
-  for (let i = 1; i < timestamps.length; i++) {
-    intervals.push(timestamps[i] - timestamps[i - 1]);
-  }
-  const mean = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+export function computeRhythm(intervalMs: number[]): number | null {
+  if (intervalMs.length < 3) return null;
+  const mean = intervalMs.reduce((a, b) => a + b, 0) / intervalMs.length;
   if (mean === 0) return null;
   const variance =
-    intervals.reduce((a, v) => a + (v - mean) ** 2, 0) / intervals.length;
+    intervalMs.reduce((a, v) => a + (v - mean) ** 2, 0) / intervalMs.length;
   const cv = (Math.sqrt(variance) / mean) * 100;
   return Math.max(0, 100 - Math.min(cv, 100));
 }
