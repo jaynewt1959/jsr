@@ -117,9 +117,21 @@ export default function App() {
   // Ref mirrors for handleNote (avoids stale closure without re-creating the callback).
   const metronomeEnabledRef    = useRef(metronomeEnabled);
   metronomeEnabledRef.current  = metronomeEnabled;
-  const isFirstNoteRef         = useRef(true); // reset to true at start of each run
+  const isFirstNoteRef         = useRef(true);
 
   useMetronome(metronomeBpm, metronomeEnabled, metronomePlayTrigger);
+
+  // ── Stale-note tracking (jsp-ipad rule) ────────────────────────────────────────
+  // prevNote = N-2 step; currentNote = N-1 step.
+  // Stale when prevNote is still physically held when N is pressed.
+  // One-step legato (N-1 held) is fine; two-step hold is imprecise technique.
+  const staleTrackerRef = useRef<{ prevNote: number | null; currentNote: number | null }>({
+    prevNote: null, currentNote: null,
+  });
+  /** Index that triggered the last heldNotes clear; ensures one clear per chord group. */
+  const clearedChordRef = useRef<number>(-1);
+  const staleTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [staleActive, setStaleActive] = useState(false);
 
   // ── Per-run metrics accumulation ────────────────────────────────────────
   // Reset at the start of every new run (config change, nav, or BEGIN_NEXT_RUN).
@@ -128,7 +140,8 @@ export default function App() {
     totalAttempts:     0,
     correctVelocities: [] as number[],
     hasVelocityData:   false,
-    noteTimestamps:    [] as number[], // performance.now() at each correct sight-reading note
+    noteTimestamps:    [] as number[],
+    stalesCount:       0,
   });
 
   function resetMetrics() {
@@ -138,6 +151,7 @@ export default function App() {
       correctVelocities: [],
       hasVelocityData:   false,
       noteTimestamps:    [],
+      stalesCount:       0,
     };
   }
 
@@ -177,6 +191,13 @@ export default function App() {
 
     if (isChordGroup) {
       // ─ Chord group (beat 0): simultaneous press of all chord notes ─
+      // On the FIRST press of a new chord group: clear arpeggio holds and
+      // reset the stale tracker so each measure starts with a clean slate.
+      if (st.currentNoteIndex !== clearedChordRef.current) {
+        clearedChordRef.current = st.currentNoteIndex;
+        heldNotesRef.current.clear();
+        staleTrackerRef.current = { prevNote: null, currentNote: null };
+      }
       heldNotesRef.current.add(note);
       const isTarget = targetPitches.includes(note);
 
@@ -230,13 +251,36 @@ export default function App() {
       : null;
     if (measureBassRoot !== null && note === measureBassRoot) return;
 
+    // Track ALL note-ons in heldNotes for staleness detection (mirrors jsp-ipad).
+    heldNotesRef.current.add(note);
+
     const cn = st.exercise.notes[st.currentNoteIndex];
     const isCorrect = cn != null && note === cn.pitch;
 
     metricsRef.current.totalAttempts++;
     if (isCorrect) {
       metricsRef.current.correctNotes++;
-      metricsRef.current.noteTimestamps.push(performance.now()); // rhythm — sequential only
+
+      // ─ Stale-note check ───────────────────────────────────────────────
+      // prevNote is N-2. Same note can never be stale (must release to re-press).
+      const tracker = staleTrackerRef.current;
+      if (
+        tracker.prevNote !== null &&
+        tracker.prevNote !== note &&
+        heldNotesRef.current.has(tracker.prevNote)
+      ) {
+        metricsRef.current.stalesCount++;
+        setStaleActive(true);
+        if (staleTimerRef.current !== null) clearTimeout(staleTimerRef.current);
+        staleTimerRef.current = setTimeout(() => {
+          setStaleActive(false);
+          staleTimerRef.current = null;
+        }, 1500);
+      }
+      // Advance: N-1 → N-2, N → N-1.
+      staleTrackerRef.current = { prevNote: tracker.currentNote, currentNote: note };
+
+      metricsRef.current.noteTimestamps.push(performance.now());
       if (velocity !== undefined && velocity > 0) {
         metricsRef.current.correctVelocities.push(velocity);
         metricsRef.current.hasVelocityData = true;
@@ -267,7 +311,11 @@ export default function App() {
     function resetForNewExercise() {
       setLastRunStats(null);
       setPendingStart(true);
-      setMetronomePlayTrigger(null); // silence metronome until next first note
+      setMetronomePlayTrigger(null);
+      setStaleActive(false);
+      if (staleTimerRef.current !== null) { clearTimeout(staleTimerRef.current); staleTimerRef.current = null; }
+      staleTrackerRef.current = { prevNote: null, currentNote: null };
+      clearedChordRef.current = -1;
       isFirstNoteRef.current = true;
       resetMetrics();
       setWrongKeys(new Set());
@@ -318,10 +366,12 @@ export default function App() {
 
     // ─ Compute metrics ─
     const m = metricsRef.current;
-    const accuracy  = m.totalAttempts > 0
-      ? (m.correctNotes / m.totalAttempts) * 100
+    // Stales add a precision penalty: denominator increases, accuracy falls.
+    const accuracy  = m.totalAttempts + m.stalesCount > 0
+      ? (m.correctNotes / (m.totalAttempts + m.stalesCount)) * 100
       : 100;
     const errors    = m.totalAttempts - m.correctNotes;
+    const stales    = m.stalesCount;
     const evenness  = m.hasVelocityData
       ? computeEvenness(m.correctVelocities)
       : null;
@@ -332,6 +382,7 @@ export default function App() {
     const stats: RunStats = {
       runNumber: exState.runCount,
       errors,
+      stales,
       accuracy,
       evenness,
       rhythm,
@@ -356,11 +407,13 @@ export default function App() {
     setRollingCount(km?.sessionCount ?? 1);
     setProgressRefreshKey(k => k + 1);
 
-    // Immediately reset for the next loop — stats stay visible until
-    // the first note of the new run clears them (see currentNoteIndex effect).
+    // Immediately reset for the next loop.
     resetMetrics();
     setPendingStart(true);
-    setMetronomePlayTrigger(null); // auto-stop; restarts when user plays first note
+    setMetronomePlayTrigger(null);
+    setStaleActive(false);
+    staleTrackerRef.current = { prevNote: null, currentNote: null };
+    clearedChordRef.current = -1;
     isFirstNoteRef.current = true;
     dispatch({ type: "BEGIN_NEXT_RUN" });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -375,6 +428,7 @@ export default function App() {
     bridge.postMessage(JSON.stringify({
       exerciseIndex:   exState.exerciseIndex,
       wrongNoteActive: exState.wrongNoteActive,
+      staleNoteActive: staleActive,
       currentHand:     cn?.staff  ?? null,
       currentFinger:   cn?.finger ?? null,
       exerciseKey:     exState.exercise.key,
@@ -384,7 +438,7 @@ export default function App() {
       midiSourceName:  midiState.activeSource ?? "",
       currentVariation,
     }));
-  }, [exState, midiState, cn]);
+  }, [exState, midiState, cn, staleActive]);
 
   const tappable = !midiState.running;
 

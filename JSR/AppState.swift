@@ -12,6 +12,8 @@ final class AppState: ObservableObject {
 
     @Published var exerciseIndex: Int = 0
     @Published var wrongNoteActive: Bool = false
+    /// True briefly when a stale-note demerit fires (player held note N-2 too long).
+    @Published var staleNoteActive: Bool = false
 
     /// "treble" or "bass" — which hand should play next.
     @Published var currentHand: String? = nil
@@ -110,6 +112,7 @@ final class AppState: ObservableObject {
     func applyBridgeUpdate(_ json: [String: Any]) {
         if let v = json["exerciseIndex"]    as? Int    { exerciseIndex    = v }
         if let v = json["wrongNoteActive"]  as? Bool   { wrongNoteActive  = v }
+        if let v = json["staleNoteActive"]   as? Bool   { staleNoteActive  = v }
         if let v = json["currentHand"]      as? String { currentHand      = v }
         else if json["currentHand"] is NSNull          { currentHand      = nil }
         if let v = json["currentFinger"]    as? Int    { currentFinger    = v }

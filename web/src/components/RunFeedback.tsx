@@ -17,6 +17,7 @@ import "./RunFeedback.css";
 export interface RunStats {
   runNumber: number;
   errors: number;
+  stales: number;       // notes held two steps too long (legato overlap demerit)
   accuracy: number;
   evenness: number | null;
   rhythm: number | null;
@@ -62,12 +63,24 @@ export function RunFeedback({ stats, rollingAvg, sessionCount }: Props) {
           <span className="run-feedback__score-label">Score</span>
           <ScoreBadge value={stats.composite} />
           <Sep />
-          {stats.errors === 0 ? (
+          {stats.errors === 0 && stats.stales === 0 ? (
             <span className="run-feedback__clean">✓ Clean</span>
           ) : (
-            <span className="run-feedback__errors">
-              {stats.errors} error{stats.errors === 1 ? "" : "s"}
-            </span>
+            <>
+              {stats.errors > 0 && (
+                <span className="run-feedback__errors">
+                  {stats.errors} error{stats.errors === 1 ? "" : "s"}
+                </span>
+              )}
+              {stats.stales > 0 && (
+                <>
+                  {stats.errors > 0 && <Sep />}
+                  <span className="run-feedback__stales">
+                    {stats.stales} stale{stats.stales === 1 ? "" : "s"}
+                  </span>
+                </>
+              )}
+            </>
           )}
           {stats.evenness !== null && (
             <>

@@ -251,7 +251,15 @@ struct ContentView: View {
 
             Spacer()
 
-            if appState.wrongNoteActive {
+            if appState.staleNoteActive {
+                Label("Lift previous finger sooner", systemImage: "hand.point.up")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color(hex: "f59e0b"))
+                    .clipShape(Capsule())
+            } else if appState.wrongNoteActive {
                 Label("Wrong note — play the blue note", systemImage: "xmark.circle.fill")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(.white)

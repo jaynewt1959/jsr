@@ -56,6 +56,11 @@
   font-weight: 700;
 }
 
+.run-feedback__stales {
+  color: #f59e0b; /* amber — technique note, not a wrong note */
+  font-weight: 700;
+}
+
 .run-feedback__metric {
   color: rgba(255, 255, 255, 0.6);
   font-size: 12px;
