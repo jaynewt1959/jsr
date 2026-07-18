@@ -414,6 +414,8 @@ struct ScoreWebView: UIViewRepresentable {
             wv?.evaluateJavaScript(script, completionHandler: nil)
         }
 
+        wv.uiDelegate = context.coordinator
+
         if let url = URL(string: "http://localhost:\(port)/") {
             wv.load(URLRequest(url: url))
         }
@@ -431,7 +433,7 @@ struct ScoreWebView: UIViewRepresentable {
 
 // MARK: - JS → Swift bridge
 
-final class BridgeHandler: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
+final class BridgeHandler: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate {
     private weak var appState: AppState?
     init(appState: AppState) { self.appState = appState }
 
@@ -441,6 +443,24 @@ final class BridgeHandler: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             self?.appState?.applyPersistedConfig()
         }
+    }
+
+    // Handle window.confirm() — required for the progress-reset button in ProgressPanel.
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptConfirmPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping (Bool) -> Void
+    ) {
+        guard
+            let scene  = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+            let rootVC = scene.windows.first?.rootViewController
+        else { completionHandler(false); return }
+
+        let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel)  { _ in completionHandler(false) })
+        alert.addAction(UIAlertAction(title: "Reset",  style: .destructive) { _ in completionHandler(true)  })
+        rootVC.present(alert, animated: true)
     }
 
     func userContentController(

@@ -83,25 +83,18 @@ function DetailSection({ progressions }: { progressions: ReturnType<typeof getPr
 // ---------------------------------------------------------------------------
 
 export function ProgressPanel({ currentKey, refreshKey }: Props) {
-  const [detailKey, setDetailKey] = useState<string | null>(null);
+  const [detailKey,    setDetailKey]    = useState<string | null>(null);
+  const [localVersion, setLocalVersion] = useState(0);
 
-  // Reload all metrics whenever a new session is saved.
+  // Reload metrics when a new session is saved (refreshKey) or after a reset (localVersion).
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const metrics = useMemo(() => getAllMetrics(), [refreshKey]);
+  const metrics = useMemo(() => getAllMetrics(), [refreshKey, localVersion]);
 
   function handleReset() {
     if (window.confirm("Reset all progress data? This cannot be undone.")) {
       clearProgress();
-      // Force a re-read by incrementing refreshKey externally is not needed
-      // here — the next key change or session record will rebuild. But we
-      // also need to re-render immediately, so we clear detailKey to force
-      // the grid to re-render from the now-empty store.
       setDetailKey(null);
-      // Trigger a re-render by re-reading; since refreshKey won't increment
-      // here, we rely on the parent eventually doing so. For an immediate
-      // visual clear, we can close the detail view and the user sees grey pips
-      // once they interact again. This is acceptable UX.
-      window.location.reload();
+      setLocalVersion(v => v + 1); // force metrics re-read without a page reload
     }
   }
 
