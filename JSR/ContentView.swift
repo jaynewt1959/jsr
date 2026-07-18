@@ -150,20 +150,41 @@ struct ContentView: View {
                 .tracking(2)
                 .foregroundColor(.white.opacity(0.5))
 
-            Picker("Progression", selection: Binding(
-                get: { appState.selectedProgression },
-                set: { appState.setProgression($0) }
-            )) {
+            // Custom Menu so the button shows only the short name (no wrap)
+            // while the dropdown items still carry the full Roman-numeral label.
+            let selectedProg = allProgressions.first { $0.id == appState.selectedProgression }
+            Menu {
                 ForEach(allProgressions, id: \.id) { prog in
-                    Text("\(prog.name)  \(prog.label)").tag(prog.id)
+                    Button(action: { appState.setProgression(prog.id) }) {
+                        // Tick the active item and show full label in dropdown.
+                        if prog.id == appState.selectedProgression {
+                            Label("\(prog.name)  \(prog.label)", systemImage: "checkmark")
+                        } else {
+                            Text("\(prog.name)  \(prog.label)")
+                        }
+                    }
                 }
+            } label: {
+                HStack(spacing: 3) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(selectedProg?.name ?? "")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(Color(hex: "60c0ff"))
+                        if let label = selectedProg?.label {
+                            Text(label)
+                                .font(.system(size: 10))
+                                .foregroundColor(Color(hex: "60c0ff").opacity(0.65))
+                        }
+                    }
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(Color(hex: "60c0ff").opacity(0.5))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.white.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
-            .pickerStyle(.menu)
-            .tint(Color(hex: "60c0ff"))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 4)
-            .background(Color.white.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
 
             Divider()
                 .background(Color.white.opacity(0.3))
