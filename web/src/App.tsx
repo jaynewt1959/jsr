@@ -13,6 +13,7 @@ import { useReducer, useCallback, useState, useEffect, useRef } from "react";
 import { initialState, reduce, currentNote, chordGroupPitches, chordGroupOf } from "./engine/exerciseEngine";
 import { useMidi } from "./hooks/useMidi";
 import type { MidiState } from "./hooks/useMidi";
+import { useMetronome } from "./hooks/useMetronome";
 import { ScoreView } from "./components/ScoreView";
 import { PianoKeyboard } from "./components/PianoKeyboard";
 import type { FlashKey, FlashColor } from "./components/PianoKeyboard";
@@ -104,6 +105,17 @@ export default function App() {
   const [progressRefreshKey, setProgressRefreshKey] = useState(0);
   // True at the start of every run; cleared by the first key press.
   const [pendingStart,       setPendingStart]       = useState(true);
+  // Metronome — controlled from Swift via window.jsr.setMetronome.
+  const [metronomeEnabled,   setMetronomeEnabled]   = useState(
+    () => localStorage.getItem('jsr.metronomeEnabled') === 'true',
+  );
+  const [metronomeBpm,       setMetronomeBpm]       = useState(
+    () => parseInt(localStorage.getItem('jsr.metronomeBpm') ?? '80', 10),
+  );
+  // Increments whenever the exercise resets; triggers a beat-grid restart.
+  const [metronomeRestart,   setMetronomeRestart]   = useState(0);
+
+  useMetronome(metronomeBpm, metronomeEnabled, metronomeRestart);
 
   // ── Per-run metrics accumulation ────────────────────────────────────────
   // Reset at the start of every new run (config change, nav, or BEGIN_NEXT_RUN).
@@ -234,6 +246,7 @@ export default function App() {
     function resetForNewExercise() {
       setLastRunStats(null);
       setPendingStart(true);
+      setMetronomeRestart(k => k + 1);
       resetMetrics();
       setWrongKeys(new Set());
       setFlashKeys(new Map());
@@ -245,6 +258,12 @@ export default function App() {
       prevExercise:   () => { resetForNewExercise(); dispatch({ type: "PREV_EXERCISE" }); },
       setKey:         (key: string)  => { resetForNewExercise(); dispatch({ type: "SET_CONFIG_KEY", key }); },
       setProgression: (prog: string) => { resetForNewExercise(); dispatch({ type: "SET_CONFIG_PROGRESSION", progression: prog }); },
+      setMetronome: (enabled: boolean, bpm: number) => {
+        setMetronomeEnabled(enabled);
+        setMetronomeBpm(bpm);
+        localStorage.setItem('jsr.metronomeEnabled', String(enabled));
+        localStorage.setItem('jsr.metronomeBpm', String(bpm));
+      },
       connectMidi:    () => sendCommandRef.current({ type: "startMidi" }),
       disconnectMidi: () => sendCommandRef.current({ type: "stopMidi" }),
     };
@@ -319,6 +338,7 @@ export default function App() {
     // the first note of the new run clears them (see currentNoteIndex effect).
     resetMetrics();
     setPendingStart(true);
+    setMetronomeRestart(k => k + 1);
     dispatch({ type: "BEGIN_NEXT_RUN" });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exState.runComplete]);

@@ -165,6 +165,59 @@ struct ContentView: View {
             .background(Color.white.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
+            Divider()
+                .background(Color.white.opacity(0.3))
+                .frame(height: 20)
+                .padding(.horizontal, 4)
+
+            // ─ TEMPO ─────────────────────────────────────────────
+            Text("TEMPO")
+                .font(.system(size: 10, weight: .heavy))
+                .tracking(2)
+                .foregroundColor(.white.opacity(0.5))
+
+            HStack(spacing: 4) {
+                ForEach([
+                    (label: "Free",    enabled: false),
+                    (label: "♪ Timed", enabled: true),
+                ], id: \.label) { item in
+                    let isActive = appState.metronomeEnabled == item.enabled
+                    Button(item.label) {
+                        appState.setMetronome(item.enabled, appState.metronomeBpm)
+                    }
+                    .font(.system(size: 13, weight: .heavy))
+                    .foregroundColor(isActive ? .black : .white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(isActive ? Color(hex: "60c0ff") : Color.white.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
+                    .buttonStyle(.plain)
+                }
+            }
+
+            if appState.metronomeEnabled {
+                Divider()
+                    .background(Color.white.opacity(0.3))
+                    .frame(height: 20)
+                    .padding(.horizontal, 2)
+
+                HStack(spacing: 4) {
+                    ForEach([60, 80, 100, 120], id: \.self) { bpm in
+                        let isActive = appState.metronomeBpm == bpm
+                        Button("\(bpm)") {
+                            appState.setMetronome(true, bpm)
+                        }
+                        .font(.system(size: 13, weight: .heavy, design: .rounded))
+                        .foregroundColor(isActive ? .black : .white.opacity(0.7))
+                        .frame(width: 38)
+                        .padding(.vertical, 5)
+                        .background(isActive ? Color(hex: "60c0ff") : Color.white.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 7))
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
             Spacer()
         }
         .padding(.horizontal, 20)

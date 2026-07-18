@@ -29,6 +29,14 @@ final class AppState: ObservableObject {
     @Published var appMode: String = UserDefaults.standard.string(forKey: "jsr.appMode") ?? "sightReading"
     /// In chord mode: 0-based index of the measure (variation) currently being played.
     @Published var currentVariation: Int = 0
+    /// Whether the metronome click track is active.
+    @Published var metronomeEnabled: Bool = UserDefaults.standard.bool(forKey: "jsr.metronomeEnabled")
+    /// Active metronome tempo in BPM (60 / 80 / 100 / 120).
+    @Published var metronomeBpm: Int = {
+        let saved = UserDefaults.standard.integer(forKey: "jsr.metronomeBpm")
+        return saved > 0 ? saved : 80
+    }()
+
     // MARK: - MIDI status (populated by JS bridge)
 
     /// True once the user has tapped Connect MIDI and CoreMIDI has started.
@@ -52,6 +60,14 @@ final class AppState: ObservableObject {
 
     func prevExercise() {
         callJS?("if(window.jsr){window.jsr.prevExercise()}")
+    }
+
+    func setMetronome(_ enabled: Bool, _ bpm: Int) {
+        metronomeEnabled = enabled
+        metronomeBpm     = bpm
+        UserDefaults.standard.set(enabled, forKey: "jsr.metronomeEnabled")
+        UserDefaults.standard.set(bpm,     forKey: "jsr.metronomeBpm")
+        callJS?("if(window.jsr){window.jsr.setMetronome(\(enabled ? "true" : "false"),\(bpm))}")
     }
 
     func setKey(_ key: String) {
@@ -84,7 +100,8 @@ final class AppState: ObservableObject {
 
     /// Called after the WebView finishes loading — restores persisted key/progression/mode into JS.
     func applyPersistedConfig() {
-        callJS?("if(window.jsr){window.jsr.setKey('\(selectedKey)');window.jsr.setProgression('\(selectedProgression)');window.jsr.setMode('\(appMode)')}")
+        let metro = metronomeEnabled ? "true" : "false"
+        callJS?("if(window.jsr){window.jsr.setKey('\(selectedKey)');window.jsr.setProgression('\(selectedProgression)');window.jsr.setMetronome(\(metro),\(metronomeBpm))}")
     }
 
     // MARK: - Bridge update
