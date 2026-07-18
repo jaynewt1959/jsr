@@ -239,7 +239,12 @@ export default function App() {
       const allHeld    = targetPitches.every(p => heldNotesRef.current.has(p));
 
       if (allHeld) {
-        // All chord notes held — full completion flash then advance.
+        // All chord notes held.
+        // IMPORTANT: dispatch CHORD_ACCEPTED IMMEDIATELY so the engine
+        // advances to arpeggio mode right away.  Any arpeggio notes the
+        // player presses will then be processed correctly in sequential
+        // mode instead of being lost as "partial chord" presses.
+        // The visual flash continues independently via the timer.
         pushDiag({ note: midiName(note), raw: note, phase: 'CHORD', result: '✓ COMPLETE', want: targetPitches.map(midiName).join(' '), idx: st.currentNoteIndex });
         setWrongKeys(new Set());
         const chordColors = new Map<number, FlashKey["color"]>();
@@ -250,10 +255,10 @@ export default function App() {
         if (flashKeysTimerRef.current !== null) clearTimeout(flashKeysTimerRef.current);
         setFlashKeys(chordColors);
         heldNotesRef.current.clear();
+        dispatch({ type: "CHORD_ACCEPTED" }); // advance engine NOW
         flashKeysTimerRef.current = setTimeout(() => {
-          setFlashKeys(new Map());
+          setFlashKeys(new Map());             // clear visual flash after delay
           flashKeysTimerRef.current = null;
-          dispatch({ type: "CHORD_ACCEPTED" });
         }, FLASH_DURATION_MS);
       } else {
         // Correct note pressed but chord not yet complete — colour it immediately.
