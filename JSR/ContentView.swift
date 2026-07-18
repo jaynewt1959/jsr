@@ -164,7 +164,7 @@ struct ContentView: View {
             .padding(.vertical, 4)
             .background(Color.white.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 8))
-            .frame(minWidth: 220, alignment: .leading)
+            .frame(minWidth: 310, alignment: .leading)
 
             Divider()
                 .background(Color.white.opacity(0.3))
