@@ -219,6 +219,26 @@ struct ContentView: View {
             }
 
             Spacer()
+
+            // ─ DIAG (debug only) ────────────────────────────────────
+            HStack(spacing: 4) {
+                Button("● DIAG") { appState.toggleDiag() }
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundColor(Color(hex: "f59e0b"))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color(hex: "f59e0b").opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .buttonStyle(.plain)
+                Button("CLR") { appState.clearDiag() }
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundColor(Color.white.opacity(0.4))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                    .background(Color.white.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .buttonStyle(.plain)
+            }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 8)

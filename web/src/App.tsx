@@ -20,6 +20,8 @@ import type { FlashKey, FlashColor } from "./components/PianoKeyboard";
 import { ProgressPanel } from "./components/ProgressPanel";
 import { RunFeedback } from "./components/RunFeedback";
 import type { RunStats } from "./components/RunFeedback";
+import { DiagPanel } from "./components/DiagPanel";
+import type { DiagEvent } from "./components/DiagPanel";
 import {
   recordSession,
   computeEvenness,
@@ -133,6 +135,24 @@ export default function App() {
   const staleTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [staleActive, setStaleActive] = useState(false);
 
+  // ── Diagnostics ───────────────────────────────────────────────────────
+  const [diagMode,   setDiagMode]   = useState(false);
+  const [diagEvents, setDiagEvents] = useState<DiagEvent[]>([]);
+  const diagRunStartRef = useRef(Date.now());
+
+  /** MIDI pitch → note name, e.g. 60 → "C4(60)". */
+  function midiName(n: number): string {
+    const names = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    return `${names[n % 12]}${Math.floor(n / 12) - 1}(${n})`;
+  }
+
+  function pushDiag(ev: Omit<DiagEvent, 't'>) {
+    const entry: DiagEvent = { ...ev, t: Date.now() - diagRunStartRef.current };
+    // Also log to console for Safari Web Inspector.
+    console.log(`[JSR] ${entry.note} ${entry.phase} ${entry.result} | want:${entry.want} | idx:${entry.idx} | t:${entry.t}ms`);
+    setDiagEvents(prev => (prev.length >= 80 ? [...prev.slice(-79), entry] : [...prev, entry]));
+  }
+
   // ── Per-run metrics accumulation ────────────────────────────────────────
   // Reset at the start of every new run (config change, nav, or BEGIN_NEXT_RUN).
   const metricsRef = useRef({
@@ -173,7 +193,10 @@ export default function App() {
   // velocity is available from MIDI but undefined for on-screen taps.
   const handleNote = useCallback((note: number, velocity?: number) => {
     const st = exStateRef.current;
-    if (st.runComplete) return; // ignore notes during countdown
+    if (st.runComplete) {
+      pushDiag({ note: midiName(note), raw: note, phase: 'IGNORE', result: 'IGNORED - run complete', want: '-', idx: st.currentNoteIndex });
+      return;
+    }
 
     // Dismiss the READY overlay on the first key press.
     setPendingStart(prev => prev ? false : prev);
@@ -205,6 +228,7 @@ export default function App() {
       if (isTarget) metricsRef.current.correctNotes++;
 
       if (!isTarget) {
+        pushDiag({ note: midiName(note), raw: note, phase: 'CHORD', result: '✗ wrong note', want: targetPitches.map(midiName).join(' '), idx: st.currentNoteIndex });
         setWrongKeys(prev => new Set([...prev, note]));
         playErrorTone();
         dispatch({ type: "NOTE_PLAYED", midiNote: note });
@@ -216,6 +240,7 @@ export default function App() {
 
       if (allHeld) {
         // All chord notes held — full completion flash then advance.
+        pushDiag({ note: midiName(note), raw: note, phase: 'CHORD', result: '✓ COMPLETE', want: targetPitches.map(midiName).join(' '), idx: st.currentNoteIndex });
         setWrongKeys(new Set());
         const chordColors = new Map<number, FlashKey["color"]>();
         groupIdxs.forEach(i => {
@@ -232,6 +257,7 @@ export default function App() {
         }, FLASH_DURATION_MS);
       } else {
         // Correct note pressed but chord not yet complete — colour it immediately.
+        pushDiag({ note: midiName(note), raw: note, phase: 'CHORD', result: '✓ partial', want: targetPitches.map(midiName).join(' '), idx: st.currentNoteIndex });
         const noteEntry = groupIdxs.find(i => st.exercise.notes[i].pitch === note);
         const color: FlashKey["color"] =
           noteEntry !== undefined && st.exercise.notes[noteEntry].staff === "bass"
@@ -249,7 +275,11 @@ export default function App() {
     const measureBassRoot = currentMeasure !== undefined
       ? st.exercise.notes.find(n => n.measure === currentMeasure && n.staff === "bass")?.pitch ?? null
       : null;
-    if (measureBassRoot !== null && note === measureBassRoot) return;
+    if (measureBassRoot !== null && note === measureBassRoot) {
+      const wantPitch = st.exercise.notes[st.currentNoteIndex]?.pitch;
+      pushDiag({ note: midiName(note), raw: note, phase: 'IGNORE', result: 'BASS ROOT', want: wantPitch !== undefined ? midiName(wantPitch) : '?', idx: st.currentNoteIndex });
+      return;
+    }
 
     // Track ALL note-ons in heldNotes for staleness detection (mirrors jsp-ipad).
     heldNotesRef.current.add(note);
@@ -264,11 +294,12 @@ export default function App() {
       // ─ Stale-note check ───────────────────────────────────────────────
       // prevNote is N-2. Same note can never be stale (must release to re-press).
       const tracker = staleTrackerRef.current;
-      if (
+      const isStale = (
         tracker.prevNote !== null &&
         tracker.prevNote !== note &&
         heldNotesRef.current.has(tracker.prevNote)
-      ) {
+      );
+      if (isStale) {
         metricsRef.current.stalesCount++;
         setStaleActive(true);
         if (staleTimerRef.current !== null) clearTimeout(staleTimerRef.current);
@@ -277,6 +308,12 @@ export default function App() {
           staleTimerRef.current = null;
         }, 1500);
       }
+      pushDiag({
+        note: midiName(note), raw: note, phase: 'SEQ',
+        result: isStale ? `✓ STALE(${midiName(tracker.prevNote!)})` : '✓ correct',
+        want: cn ? midiName(cn.pitch) : '?',
+        idx: st.currentNoteIndex,
+      });
       // Advance: N-1 → N-2, N → N-1.
       staleTrackerRef.current = { prevNote: tracker.currentNote, currentNote: note };
 
@@ -291,6 +328,7 @@ export default function App() {
       setWrongKeys(new Set());
       triggerFlash(note, cn.staff === "bass" ? "left" : "right");
     } else {
+      pushDiag({ note: midiName(note), raw: note, phase: 'SEQ', result: `✗ WRONG`, want: cn ? midiName(cn.pitch) : '?', idx: st.currentNoteIndex });
       setWrongKeys(prev => new Set([...prev, note]));
       playErrorTone();
     }
@@ -334,6 +372,8 @@ export default function App() {
         localStorage.setItem('jsr.metronomeEnabled', String(enabled));
         localStorage.setItem('jsr.metronomeBpm', String(bpm));
       },
+      toggleDiag:     () => { setDiagMode(prev => !prev); },
+      clearDiag:      () => { setDiagEvents([]); diagRunStartRef.current = Date.now(); },
       connectMidi:    () => sendCommandRef.current({ type: "startMidi" }),
       disconnectMidi: () => sendCommandRef.current({ type: "stopMidi" }),
     };
@@ -415,6 +455,7 @@ export default function App() {
     staleTrackerRef.current = { prevNote: null, currentNote: null };
     clearedChordRef.current = -1;
     isFirstNoteRef.current = true;
+    diagRunStartRef.current = Date.now();
     dispatch({ type: "BEGIN_NEXT_RUN" });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exState.runComplete]);
@@ -444,7 +485,14 @@ export default function App() {
 
   return (
     <div className="score-root">
-      {pendingStart && (
+      {diagMode && (
+        <DiagPanel
+          events={diagEvents}
+          onClose={() => setDiagMode(false)}
+          onClear={() => { setDiagEvents([]); diagRunStartRef.current = Date.now(); }}
+        />
+      )}
+      {!diagMode && pendingStart && (
         <div className="ready-overlay" aria-live="polite" aria-label="Ready to play">
           <div className="ready-overlay__content">
             <span className="ready-overlay__title">READY</span>

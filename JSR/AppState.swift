@@ -64,6 +64,14 @@ final class AppState: ObservableObject {
         callJS?("if(window.jsr){window.jsr.prevExercise()}")
     }
 
+    func toggleDiag() {
+        callJS?("if(window.jsr){window.jsr.toggleDiag()}")
+    }
+
+    func clearDiag() {
+        callJS?("if(window.jsr){window.jsr.clearDiag()}")
+    }
+
     func setMetronome(_ enabled: Bool, _ bpm: Int) {
         metronomeEnabled = enabled
         metronomeBpm     = bpm
