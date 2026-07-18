@@ -161,10 +161,12 @@ export default function App() {
         return;
       }
 
-      const allHeld = targetPitches.every(p => heldNotesRef.current.has(p));
+      const groupIdxs = chordGroupOf(st.exercise.notes, st.currentNoteIndex);
+      const allHeld    = targetPitches.every(p => heldNotesRef.current.has(p));
+
       if (allHeld) {
+        // All chord notes held — full completion flash then advance.
         setWrongKeys(new Set());
-        const groupIdxs   = chordGroupOf(st.exercise.notes, st.currentNoteIndex);
         const chordColors = new Map<number, FlashKey["color"]>();
         groupIdxs.forEach(i => {
           const n = st.exercise.notes[i];
@@ -178,6 +180,13 @@ export default function App() {
           flashKeysTimerRef.current = null;
           dispatch({ type: "CHORD_ACCEPTED" });
         }, FLASH_DURATION_MS);
+      } else {
+        // Correct note pressed but chord not yet complete — colour it immediately.
+        const noteEntry = groupIdxs.find(i => st.exercise.notes[i].pitch === note);
+        const color: FlashKey["color"] =
+          noteEntry !== undefined && st.exercise.notes[noteEntry].staff === "bass"
+            ? "left" : "right";
+        setFlashKeys(prev => new Map([...prev, [note, color]]));
       }
       return;
     }
@@ -221,6 +230,7 @@ export default function App() {
       setLastRunStats(null);
       resetMetrics();
       setWrongKeys(new Set());
+      setFlashKeys(new Map()); // clear any partial chord colouring
       heldNotesRef.current.clear();
     }
     (window as any).jsr = {
