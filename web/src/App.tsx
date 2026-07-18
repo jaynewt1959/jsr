@@ -221,6 +221,15 @@ export default function App() {
     }
 
     // ─ Sequential note (beats 1–3 arpeggio) ─
+    // Silently ignore the current measure's bass root (whole note from beat 0).
+    // It's expected to be held through the measure and must not be flagged as
+    // an error if re-triggered while the player is playing the arpeggio.
+    const currentMeasure = st.exercise.notes[st.currentNoteIndex]?.measure;
+    const measureBassRoot = currentMeasure !== undefined
+      ? st.exercise.notes.find(n => n.measure === currentMeasure && n.staff === "bass")?.pitch ?? null
+      : null;
+    if (measureBassRoot !== null && note === measureBassRoot) return;
+
     const cn = st.exercise.notes[st.currentNoteIndex];
     const isCorrect = cn != null && note === cn.pitch;
 
