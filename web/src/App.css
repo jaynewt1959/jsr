@@ -5,10 +5,58 @@
 html, body, #root { background: #ffffff; }
 
 .score-root {
+  position: relative; /* anchor for the READY overlay */
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+/* ===== READY overlay ===================================================== */
+
+.ready-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: rgba(13, 16, 53, 0.86);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Allow keyboard taps to pass straight through to the keys below. */
+  pointer-events: none;
+  border-radius: 10px;
+}
+
+.ready-overlay__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.ready-overlay__title {
+  font-size: 72px;
+  font-weight: 900;
+  letter-spacing: 6px;
+  color: #facc15;
+  line-height: 1;
+  /* Subtle pulse to draw the eye. */
+  animation: ready-pulse 1.6s ease-in-out infinite;
+}
+
+.ready-overlay__sub {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+@keyframes ready-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
 }
 
 /* ===== Keyboard container ================================================ */

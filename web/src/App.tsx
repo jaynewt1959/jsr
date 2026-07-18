@@ -102,6 +102,8 @@ export default function App() {
   const [rollingAvg,         setRollingAvg]         = useState<number | null>(null);
   const [rollingCount,       setRollingCount]       = useState(0);
   const [progressRefreshKey, setProgressRefreshKey] = useState(0);
+  // True at the start of every run; cleared by the first key press.
+  const [pendingStart,       setPendingStart]       = useState(true);
 
   // ── Per-run metrics accumulation ────────────────────────────────────────
   // Reset at the start of every new run (config change, nav, or BEGIN_NEXT_RUN).
@@ -142,6 +144,9 @@ export default function App() {
   const handleNote = useCallback((note: number, velocity?: number) => {
     const st = exStateRef.current;
     if (st.runComplete) return; // ignore notes during countdown
+
+    // Dismiss the READY overlay on the first key press.
+    setPendingStart(prev => prev ? false : prev);
 
     const targetPitches = chordGroupPitches(st.exercise.notes, st.currentNoteIndex);
     const isChordGroup  = targetPitches.length > 1;
@@ -228,9 +233,10 @@ export default function App() {
   useEffect(() => {
     function resetForNewExercise() {
       setLastRunStats(null);
+      setPendingStart(true);
       resetMetrics();
       setWrongKeys(new Set());
-      setFlashKeys(new Map()); // clear any partial chord colouring
+      setFlashKeys(new Map());
       heldNotesRef.current.clear();
     }
     (window as any).jsr = {
@@ -312,6 +318,7 @@ export default function App() {
     // Immediately reset for the next loop — stats stay visible until
     // the first note of the new run clears them (see currentNoteIndex effect).
     resetMetrics();
+    setPendingStart(true);
     dispatch({ type: "BEGIN_NEXT_RUN" });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exState.runComplete]);
@@ -340,6 +347,14 @@ export default function App() {
 
   return (
     <div className="score-root">
+      {pendingStart && (
+        <div className="ready-overlay" aria-live="polite" aria-label="Ready to play">
+          <div className="ready-overlay__content">
+            <span className="ready-overlay__title">READY</span>
+            <span className="ready-overlay__sub">Play the chord to begin</span>
+          </div>
+        </div>
+      )}
       <ScoreView
         exercise={exState.exercise}
         noteStatuses={exState.noteStatuses}
