@@ -356,6 +356,11 @@ export default function App() {
       <ProgressPanel
         currentKey={exState.selectedKey}
         refreshKey={progressRefreshKey}
+        onReset={() => {
+          setLastRunStats(null);
+          setRollingAvg(null);
+          setRollingCount(0);
+        }}
       />
     </div>
   );

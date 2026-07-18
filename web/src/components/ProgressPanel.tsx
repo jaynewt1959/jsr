@@ -28,6 +28,9 @@ interface Props {
   currentKey: string;
   /** Incremented by App.tsx each time a session is saved. */
   refreshKey: number;
+  /** Called after progress data is cleared, so the parent can reset any
+   *  run-feedback state that references the now-deleted data. */
+  onReset?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,7 +85,7 @@ function DetailSection({ progressions }: { progressions: ReturnType<typeof getPr
 // ProgressPanel
 // ---------------------------------------------------------------------------
 
-export function ProgressPanel({ currentKey, refreshKey }: Props) {
+export function ProgressPanel({ currentKey, refreshKey, onReset }: Props) {
   const [detailKey,    setDetailKey]    = useState<string | null>(null);
   const [localVersion, setLocalVersion] = useState(0);
 
@@ -94,7 +97,8 @@ export function ProgressPanel({ currentKey, refreshKey }: Props) {
     if (window.confirm("Reset all progress data? This cannot be undone.")) {
       clearProgress();
       setDetailKey(null);
-      setLocalVersion(v => v + 1); // force metrics re-read without a page reload
+      setLocalVersion(v => v + 1);
+      onReset?.(); // clear any parent state tied to the now-deleted data
     }
   }
 
