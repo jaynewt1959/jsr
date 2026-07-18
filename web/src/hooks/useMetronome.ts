@@ -27,36 +27,35 @@ interface MetronomeHook {
 export function useMetronome(
   bpm: number,
   enabled: boolean,
-  /** Increment this whenever the exercise resets so the beat grid restarts. */
-  restartTrigger: number,
+  /**
+   * `null`   — silent (READY state or run just completed).
+   * `number` — counter that changes when the user plays their first note;
+   *             triggers a beat-grid start anchored to that moment.
+   *             The user's note is beat 0 (downbeat); the first CLICK fires
+   *             one beat later on beat 1, guiding the arpeggio.
+   */
+  playTrigger: number | null,
 ): MetronomeHook {
   const [beatPhase, setBeatPhase] = useState(0);
 
-  // Live refs — updated every render so the interval sees current values
-  // without the effect needing to re-run on every prop change.
   const bpmRef          = useRef(bpm);
   const enabledRef      = useRef(enabled);
-  const triggerRef      = useRef(restartTrigger);
-  const syncedTriggerRef = useRef<number>(-1);
+  const triggerRef      = useRef(playTrigger);
+  /** Last trigger value the interval acted on; use NaN as uninitialised sentinel. */
+  const syncedTrigger   = useRef<number | null>(NaN as any);
 
   bpmRef.current     = bpm;
   enabledRef.current = enabled;
-  triggerRef.current = restartTrigger;
+  triggerRef.current = playTrigger;
 
   const ctxRef        = useRef<AudioContext | null>(null);
   const masterGainRef = useRef<GainNode | null>(null);
   const nextBeatRef   = useRef<number>(0);
   const beatInBarRef  = useRef<number>(0);
 
-  // The effect only re-runs when `enabled` changes. Beat-grid restarts and
-  // BPM changes are handled inside the interval via refs.
   useEffect(() => {
-    if (!enabled) {
-      setBeatPhase(0);
-      return;
-    }
+    if (!enabled) { setBeatPhase(0); return; }
 
-    // Create / resume AudioContext.
     if (!ctxRef.current || ctxRef.current.state === "closed") {
       ctxRef.current = new AudioContext();
     }
@@ -67,9 +66,8 @@ export function useMetronome(
     masterGain.gain.setValueAtTime(1, ctx.currentTime);
     masterGain.connect(ctx.destination);
     masterGainRef.current = masterGain;
-
-    // Force an immediate beat-grid initialisation on the first tick.
-    syncedTriggerRef.current = -1;
+    // Force the interval to evaluate the current trigger on its first tick.
+    syncedTrigger.current = NaN as any;
 
     function scheduleClick(at: number, downbeat: boolean): void {
       const c  = ctxRef.current;
@@ -80,7 +78,6 @@ export function useMetronome(
       const gain = c.createGain();
       osc.connect(gain);
       gain.connect(mg);
-      // Downbeat: higher pitch + louder; off-beats: softer.
       osc.frequency.value = downbeat ? 1200 : 880;
       const peak = downbeat ? 0.55 : 0.30;
       gain.gain.setValueAtTime(0, scheduled);
@@ -97,24 +94,36 @@ export function useMetronome(
       if (!c || !mg) return;
 
       const beatPeriodSec = 60 / bpmRef.current;
-      const lookahead     = c.currentTime + LOOK_AHEAD_MS / 1000;
 
-      // Restart the beat grid when restartTrigger changes.
-      if (triggerRef.current !== syncedTriggerRef.current) {
-        syncedTriggerRef.current = triggerRef.current;
-        // Start the first beat slightly ahead so the user hears it immediately.
-        nextBeatRef.current  = c.currentTime + 0.05;
-        beatInBarRef.current = 0;
+      // ─ Handle trigger transitions ─────────────────────────────
+      // eslint-disable-next-line no-self-compare
+      const triggerChanged = triggerRef.current !== syncedTrigger.current &&
+                             !(Number.isNaN(syncedTrigger.current as any) && triggerRef.current === null);
+      if (triggerChanged || Number.isNaN(syncedTrigger.current as any)) {
+        syncedTrigger.current = triggerRef.current;
+
+        if (triggerRef.current === null) {
+          // Run completed or exercise reset — stay silent.
+          setBeatPhase(0);
+          return;
+        }
+
+        // User played their first note — anchor beat 0 to NOW.
+        // Schedule the first CLICK one beat later (beat 1 / arpeggio note 1).
+        nextBeatRef.current  = c.currentTime + beatPeriodSec;
+        beatInBarRef.current = 1; // beat 0 (downbeat) just happened via user's note
       }
 
-      // Schedule any upcoming clicks within the look-ahead window.
+      // ─ Silent state ────────────────────────────────────────
+      if (triggerRef.current === null) { setBeatPhase(0); return; }
+
+      // ─ Lookahead scheduling ───────────────────────────────
+      const lookahead = c.currentTime + LOOK_AHEAD_MS / 1000;
       while (nextBeatRef.current < lookahead) {
         scheduleClick(nextBeatRef.current, beatInBarRef.current === 0);
         nextBeatRef.current += beatPeriodSec;
         beatInBarRef.current = (beatInBarRef.current + 1) % 4;
       }
-
-      // Derive beat phase for optional visual pulse.
       const elapsed = c.currentTime - (nextBeatRef.current - beatPeriodSec);
       setBeatPhase(Math.min(1, Math.max(0, elapsed / beatPeriodSec)));
     }, LOOK_INTERVAL_MS);

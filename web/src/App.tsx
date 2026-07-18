@@ -112,10 +112,14 @@ export default function App() {
   const [metronomeBpm,       setMetronomeBpm]       = useState(
     () => parseInt(localStorage.getItem('jsr.metronomeBpm') ?? '80', 10),
   );
-  // Increments whenever the exercise resets; triggers a beat-grid restart.
-  const [metronomeRestart,   setMetronomeRestart]   = useState(0);
+  // null = silent (READY / run-complete); number = grid running (increments on each first-note).
+  const [metronomePlayTrigger, setMetronomePlayTrigger] = useState<number | null>(null);
+  // Ref mirrors for handleNote (avoids stale closure without re-creating the callback).
+  const metronomeEnabledRef    = useRef(metronomeEnabled);
+  metronomeEnabledRef.current  = metronomeEnabled;
+  const isFirstNoteRef         = useRef(true); // reset to true at start of each run
 
-  useMetronome(metronomeBpm, metronomeEnabled, metronomeRestart);
+  useMetronome(metronomeBpm, metronomeEnabled, metronomePlayTrigger);
 
   // ── Per-run metrics accumulation ────────────────────────────────────────
   // Reset at the start of every new run (config change, nav, or BEGIN_NEXT_RUN).
@@ -159,6 +163,14 @@ export default function App() {
 
     // Dismiss the READY overlay on the first key press.
     setPendingStart(prev => prev ? false : prev);
+
+    // Start the metronome grid on the first note of each run.
+    if (isFirstNoteRef.current && metronomeEnabledRef.current) {
+      isFirstNoteRef.current = false;
+      setMetronomePlayTrigger(prev => (prev ?? 0) + 1);
+    } else {
+      isFirstNoteRef.current = false;
+    }
 
     const targetPitches = chordGroupPitches(st.exercise.notes, st.currentNoteIndex);
     const isChordGroup  = targetPitches.length > 1;
@@ -246,7 +258,8 @@ export default function App() {
     function resetForNewExercise() {
       setLastRunStats(null);
       setPendingStart(true);
-      setMetronomeRestart(k => k + 1);
+      setMetronomePlayTrigger(null); // silence metronome until next first note
+      isFirstNoteRef.current = true;
       resetMetrics();
       setWrongKeys(new Set());
       setFlashKeys(new Map());
@@ -338,7 +351,8 @@ export default function App() {
     // the first note of the new run clears them (see currentNoteIndex effect).
     resetMetrics();
     setPendingStart(true);
-    setMetronomeRestart(k => k + 1);
+    setMetronomePlayTrigger(null); // auto-stop; restarts when user plays first note
+    isFirstNoteRef.current = true;
     dispatch({ type: "BEGIN_NEXT_RUN" });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exState.runComplete]);
