@@ -171,7 +171,38 @@ struct ContentView: View {
                 .frame(height: 20)
                 .padding(.horizontal, 4)
 
-            // ─ TEMPO ─────────────────────────────────────────────
+            // ─ MODE ──────────────────────────────────────────────────
+            Text("MODE")
+                .font(.system(size: 10, weight: .heavy))
+                .tracking(2)
+                .foregroundColor(.white.opacity(0.5))
+
+            HStack(spacing: 4) {
+                ForEach([
+                    (label: "Sight Reading", mode: "sightReading"),
+                    (label: "♪ Bass",        mode: "bass"),
+                    (label: "♪ Both",        mode: "combined"),
+                ], id: \.mode) { item in
+                    let isActive = appState.bassMode == item.mode
+                    Button(item.label) {
+                        appState.setBassMode(item.mode)
+                    }
+                    .font(.system(size: 13, weight: .heavy))
+                    .foregroundColor(isActive ? .black : .white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(isActive ? Color(hex: "60c0ff") : Color.white.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Divider()
+                .background(Color.white.opacity(0.3))
+                .frame(height: 20)
+                .padding(.horizontal, 4)
+
+            // ─ TEMPO ────────────────────────────────────────────────
             Text("TEMPO")
                 .font(.system(size: 10, weight: .heavy))
                 .tracking(2)

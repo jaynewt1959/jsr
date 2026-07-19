@@ -13,7 +13,7 @@
  */
 
 import type { Exercise, ExerciseNote } from "./voiceLeading";
-import { getExercise } from "./voiceLeading";
+import { getExercise, getBassLineExercise, getCombinedExercise } from "./voiceLeading";
 
 // ---------------------------------------------------------------------------
 // State types
@@ -40,6 +40,8 @@ export interface ExerciseState {
   selectedKey: string;
   /** Currently selected progression id, e.g. "pop", "50s". */
   selectedProgression: string;
+  /** Current training mode. */
+  selectedMode: "sightReading" | "bass" | "combined";
   /** Total complete runs played since the last config change. */
   runCount: number;
   /** True while a run has just finished and the countdown is ticking.
@@ -84,8 +86,12 @@ export function initialState(
   exerciseIndex: number = 0,
   key: string = "C",
   progression: string = "50s",
+  mode: "sightReading" | "bass" | "combined" = "sightReading",
 ): ExerciseState {
-  const exercise = getExercise(exerciseIndex, key, progression);
+  const exercise =
+    mode === "bass"     ? getBassLineExercise(exerciseIndex, key, progression) :
+    mode === "combined" ? getCombinedExercise(exerciseIndex, key, progression) :
+                          getExercise(exerciseIndex, key, progression);
   return {
     exercise,
     currentNoteIndex: 0,
@@ -96,6 +102,7 @@ export function initialState(
     exerciseIndex,
     selectedKey: key,
     selectedProgression: progression,
+    selectedMode: mode,
     runCount: 0,
     runComplete: false,
   };
@@ -113,7 +120,8 @@ export type Action =
   | { type: "RESTART_EXERCISE" }   // clear errors, restart current variant
   | { type: "BEGIN_NEXT_RUN" }     // start the next loop after a run completes
   | { type: "SET_CONFIG_KEY"; key: string }
-  | { type: "SET_CONFIG_PROGRESSION"; progression: string };
+  | { type: "SET_CONFIG_PROGRESSION"; progression: string }
+  | { type: "SET_CONFIG_MODE"; mode: "sightReading" | "bass" | "combined" };
 
 export function reduce(state: ExerciseState, action: Action): ExerciseState {
   switch (action.type) {
@@ -129,15 +137,17 @@ export function reduce(state: ExerciseState, action: Action): ExerciseState {
     case "BEGIN_NEXT_RUN":
       return handleBeginNextRun(state);
     case "ADVANCE_EXERCISE":
-      return initialState((state.exerciseIndex + 1) % 4, state.selectedKey, state.selectedProgression);
+      return initialState((state.exerciseIndex + 1) % 4, state.selectedKey, state.selectedProgression, state.selectedMode);
     case "PREV_EXERCISE":
-      return initialState((state.exerciseIndex + 3) % 4, state.selectedKey, state.selectedProgression);
+      return initialState((state.exerciseIndex + 3) % 4, state.selectedKey, state.selectedProgression, state.selectedMode);
     case "RESTART_EXERCISE":
-      return initialState(state.exerciseIndex, state.selectedKey, state.selectedProgression);
+      return initialState(state.exerciseIndex, state.selectedKey, state.selectedProgression, state.selectedMode);
     case "SET_CONFIG_KEY":
-      return initialState(0, action.key, state.selectedProgression);
+      return initialState(0, action.key, state.selectedProgression, state.selectedMode);
     case "SET_CONFIG_PROGRESSION":
-      return initialState(0, state.selectedKey, action.progression);
+      return initialState(0, state.selectedKey, action.progression, state.selectedMode);
+    case "SET_CONFIG_MODE":
+      return initialState(0, state.selectedKey, state.selectedProgression, action.mode);
     default:
       return state;
   }
@@ -201,7 +211,13 @@ function handleNotePlayed(state: ExerciseState, midiNote: number): ExerciseState
     };
   }
 
-  newStatuses[nextIndex] = "current";
+  // Mark the entire next chord group as 'current' so every member is
+  // highlighted simultaneously.  For a single sequential note this is a
+  // no-op (group size 1); for a combined-mode LH+RH chord group at beats
+  // 1/2/3, both the bass and treble members are marked together.
+  const nextGroup = chordGroupOf(state.exercise.notes, nextIndex);
+  for (const i of nextGroup) newStatuses[i] = 'current';
+
   return {
     ...state,
     noteStatuses: newStatuses,
