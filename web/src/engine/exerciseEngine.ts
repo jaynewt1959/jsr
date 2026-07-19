@@ -13,7 +13,7 @@
  */
 
 import type { Exercise, ExerciseNote } from "./voiceLeading";
-import { getExercise, getBassLineExercise } from "./voiceLeading";
+import { getExercise, getBassLineExercise, getCombinedExercise } from "./voiceLeading";
 
 // ---------------------------------------------------------------------------
 // State types
@@ -41,7 +41,7 @@ export interface ExerciseState {
   /** Currently selected progression id, e.g. "pop", "50s". */
   selectedProgression: string;
   /** Current training mode. */
-  selectedMode: "sightReading" | "bass";
+  selectedMode: "sightReading" | "bass" | "combined";
   /** Total complete runs played since the last config change. */
   runCount: number;
   /** True while a run has just finished and the countdown is ticking.
@@ -86,11 +86,12 @@ export function initialState(
   exerciseIndex: number = 0,
   key: string = "C",
   progression: string = "50s",
-  mode: "sightReading" | "bass" = "sightReading",
+  mode: "sightReading" | "bass" | "combined" = "sightReading",
 ): ExerciseState {
-  const exercise = mode === "bass"
-    ? getBassLineExercise(exerciseIndex, key, progression)
-    : getExercise(exerciseIndex, key, progression);
+  const exercise =
+    mode === "bass"     ? getBassLineExercise(exerciseIndex, key, progression) :
+    mode === "combined" ? getCombinedExercise(exerciseIndex, key, progression) :
+                          getExercise(exerciseIndex, key, progression);
   return {
     exercise,
     currentNoteIndex: 0,
@@ -120,7 +121,7 @@ export type Action =
   | { type: "BEGIN_NEXT_RUN" }     // start the next loop after a run completes
   | { type: "SET_CONFIG_KEY"; key: string }
   | { type: "SET_CONFIG_PROGRESSION"; progression: string }
-  | { type: "SET_CONFIG_MODE"; mode: "sightReading" | "bass" };
+  | { type: "SET_CONFIG_MODE"; mode: "sightReading" | "bass" | "combined" };
 
 export function reduce(state: ExerciseState, action: Action): ExerciseState {
   switch (action.type) {

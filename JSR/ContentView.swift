@@ -181,6 +181,7 @@ struct ContentView: View {
                 ForEach([
                     (label: "Sight Reading", mode: "sightReading"),
                     (label: "♪ Bass",        mode: "bass"),
+                    (label: "♪ Both",        mode: "combined"),
                 ], id: \.mode) { item in
                     let isActive = appState.bassMode == item.mode
                     Button(item.label) {

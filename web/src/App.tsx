@@ -309,6 +309,7 @@ export default function App() {
       const tracker = staleTrackerRef.current;
       const isStale = (
         !st.exercise.bassMode &&
+        !st.exercise.combinedMode &&
         tracker.prevNote !== null &&
         tracker.prevNote !== note &&
         heldNotesRef.current.has(tracker.prevNote)

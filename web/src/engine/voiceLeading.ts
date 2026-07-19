@@ -41,6 +41,8 @@ export interface Exercise {
   referenceNotes?: ExerciseNote[];
   /** True when this is a bass-line-only exercise (Stage 1 bass mode). */
   bassMode?: boolean;
+  /** True when this is a combined (both-hands) exercise (Stage 2). */
+  combinedMode?: boolean;
   key: string;
   beatsPerMeasure: number;
   progressionName: string;
@@ -561,6 +563,88 @@ function buildBassLineExercise(
 }
 
 // ---------------------------------------------------------------------------
+// Combined (both-hands) exercise builder
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a combined exercise: LH bass line + RH chord/arpeggio played together.
+ *
+ * Uses fractional beats so the existing chord-group detection (groups by
+ * measure+beat) naturally handles the interleaving:
+ *
+ *   beat 0.0 — 4-note chord group: LH eighth + RH block chord (3 notes)
+ *   beat 0.5 — sequential: LH eighth only
+ *   beat 1.0 — 2-note chord group: LH eighth + RH arpeggio bottom
+ *   beat 1.5 — sequential: LH eighth only
+ *   beat 2.0 — 2-note chord group: LH eighth + RH arpeggio middle
+ *   beat 2.5 — sequential: LH eighth only
+ *   beat 3.0 — 2-note chord group: LH eighth + RH arpeggio top
+ *   beat 3.5 — sequential: LH eighth only
+ *
+ * 14 notes per measure (56 total).  No referenceNotes needed — the treble
+ * chord/arpeggio is validated directly.
+ */
+function buildCombinedExercise(
+  progression: ChordDef[],
+  startVoicing: Voicing,
+  keyName: string,
+  progressionName: string,
+  progressionLabel: string,
+  progressionId: string,
+): Exercise {
+  const pattern     = BASS_LINE_PATTERNS[progressionId] ?? BASS_LINE_PATTERNS["50s"];
+  const notes: ExerciseNote[] = [];
+  let prevVoicing   = startVoicing;
+
+  for (let m = 0; m < progression.length; m++) {
+    const chord   = progression[m];
+    const voicing = m === 0 ? startVoicing : bestVoicing(chord, prevVoicing);
+    prevVoicing   = voicing;
+
+    const [f1, f2, f5] = rhFingering(voicing);
+
+    // ─ Beat 0: 4-note chord group (LH + RH block chord) ─────────────────
+    notes.push({ pitch: computeBassLineNote(chord.bassRoot, pattern[0]), duration: "8", staff: "bass",   finger: 0,       measure: m, beat: 0 });
+    notes.push({ pitch: voicing[0], duration: "q", staff: "treble", finger: f1, measure: m, beat: 0, romanNumeral: chord.roman, chordSymbol: chord.symbol });
+    notes.push({ pitch: voicing[1], duration: "q", staff: "treble", finger: f2, measure: m, beat: 0 });
+    notes.push({ pitch: voicing[2], duration: "q", staff: "treble", finger: f5, measure: m, beat: 0 });
+
+    // ─ Beat 0.5: sequential LH only ──────────────────────────────────────
+    notes.push({ pitch: computeBassLineNote(chord.bassRoot, pattern[1]), duration: "8", staff: "bass", finger: 0, measure: m, beat: 0.5 });
+
+    // ─ Beat 1: 2-note chord group (LH + RH arpeggio bottom) ──────────────
+    notes.push({ pitch: computeBassLineNote(chord.bassRoot, pattern[2]), duration: "8", staff: "bass",   finger: 0,  measure: m, beat: 1 });
+    notes.push({ pitch: voicing[0], duration: "q", staff: "treble", finger: f1, measure: m, beat: 1 });
+
+    // ─ Beat 1.5: sequential LH only ──────────────────────────────────────
+    notes.push({ pitch: computeBassLineNote(chord.bassRoot, pattern[3]), duration: "8", staff: "bass", finger: 0, measure: m, beat: 1.5 });
+
+    // ─ Beat 2: 2-note chord group (LH + RH arpeggio middle) ──────────────
+    notes.push({ pitch: computeBassLineNote(chord.bassRoot, pattern[4]), duration: "8", staff: "bass",   finger: 0,  measure: m, beat: 2 });
+    notes.push({ pitch: voicing[1], duration: "q", staff: "treble", finger: f2, measure: m, beat: 2 });
+
+    // ─ Beat 2.5: sequential LH only ──────────────────────────────────────
+    notes.push({ pitch: computeBassLineNote(chord.bassRoot, pattern[5]), duration: "8", staff: "bass", finger: 0, measure: m, beat: 2.5 });
+
+    // ─ Beat 3: 2-note chord group (LH + RH arpeggio top) ─────────────────
+    notes.push({ pitch: computeBassLineNote(chord.bassRoot, pattern[6]), duration: "8", staff: "bass",   finger: 0,  measure: m, beat: 3 });
+    notes.push({ pitch: voicing[2], duration: "q", staff: "treble", finger: f5, measure: m, beat: 3 });
+
+    // ─ Beat 3.5: sequential LH only ──────────────────────────────────────
+    notes.push({ pitch: computeBassLineNote(chord.bassRoot, pattern[7]), duration: "8", staff: "bass", finger: 0, measure: m, beat: 3.5 });
+  }
+
+  return {
+    notes,
+    combinedMode: true,
+    key: keyName,
+    beatsPerMeasure: 4,
+    progressionName,
+    progressionLabel,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -597,6 +681,29 @@ export function getBassLineExercise(
   const starts   = getStartingVoicings(prog[0]);
   const start    = starts[index % starts.length];
   return buildBassLineExercise(
+    prog, start,
+    `${key.id} major`,
+    template.name,
+    template.label,
+    template.id,
+  );
+}
+
+/**
+ * Build a combined (both-hands) exercise for the given key and progression.
+ * Same variant system as getExercise (index 0–3).
+ */
+export function getCombinedExercise(
+  index: number,
+  keyId: string = "C",
+  progressionId: string = "50s",
+): Exercise {
+  const key      = KEYS.find(k => k.id === keyId)                ?? KEYS[0];
+  const template = PROGRESSIONS.find(p => p.id === progressionId) ?? PROGRESSIONS[1];
+  const prog     = buildProgression(key, template);
+  const starts   = getStartingVoicings(prog[0]);
+  const start    = starts[index % starts.length];
+  return buildCombinedExercise(
     prog, start,
     `${key.id} major`,
     template.name,
