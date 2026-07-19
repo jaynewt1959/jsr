@@ -105,8 +105,6 @@ export default function App() {
   const [rollingAvg,         setRollingAvg]         = useState<number | null>(null);
   const [rollingCount,       setRollingCount]       = useState(0);
   const [progressRefreshKey, setProgressRefreshKey] = useState(0);
-  // True at the start of every run; cleared by the first key press.
-  const [pendingStart,       setPendingStart]       = useState(true);
   // Metronome — controlled from Swift via window.jsr.setMetronome.
   const [metronomeEnabled,   setMetronomeEnabled]   = useState(
     () => localStorage.getItem('jsr.metronomeEnabled') === 'true',
@@ -198,9 +196,6 @@ export default function App() {
       pushDiag({ note: midiName(note), raw: note, phase: 'IGNORE', result: 'IGNORED - run complete', want: '-', idx: st.currentNoteIndex });
       return;
     }
-
-    // Dismiss the READY overlay on the first key press.
-    setPendingStart(prev => prev ? false : prev);
 
     // Start the metronome grid on the first note of each run.
     if (isFirstNoteRef.current && metronomeEnabledRef.current) {
@@ -363,7 +358,6 @@ export default function App() {
   useEffect(() => {
     function resetForNewExercise() {
       setLastRunStats(null);
-      setPendingStart(true);
       setMetronomePlayTrigger(null);
       setStaleActive(false);
       if (staleTimerRef.current !== null) { clearTimeout(staleTimerRef.current); staleTimerRef.current = null; }
@@ -478,7 +472,6 @@ export default function App() {
 
     // Immediately reset for the next loop.
     resetMetrics();
-    setPendingStart(true);
     setMetronomePlayTrigger(null);
     setStaleActive(false);
     staleTrackerRef.current = { prevNote: null, currentNote: null };
@@ -520,18 +513,6 @@ export default function App() {
           onClose={() => setDiagMode(false)}
           onClear={() => { setDiagEvents([]); diagRunStartRef.current = Date.now(); }}
         />
-      )}
-      {!diagMode && pendingStart && (
-        <div className="ready-overlay" aria-live="polite" aria-label="Ready to play">
-          <div className="ready-overlay__content">
-            <span className="ready-overlay__title">READY</span>
-            <span className="ready-overlay__sub">
-              {exState.exercise.bassMode
-                ? "Play the first bass note to begin"
-                : "Play the chord to begin"}
-            </span>
-          </div>
-        </div>
       )}
       <ScoreView
         exercise={exState.exercise}

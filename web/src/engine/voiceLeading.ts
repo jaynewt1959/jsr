@@ -599,13 +599,18 @@ function buildBassLineExercise(
     referenceNotes.push({ pitch: voicing[1], duration: "q", staff: "treble", finger: f2, measure: m, beat: 0 });
     referenceNotes.push({ pitch: voicing[2], duration: "q", staff: "treble", finger: f5, measure: m, beat: 0 });
 
+    // Pre-compute all 8 bass pitches so bassLineFingering can see the
+    // full distinct-pitch set when assigning each finger.
+    const bassPitches = pattern.map(offset => computeBassLineNote(chord.bassRoot, offset));
+    const bf = bassPitches.map(p => bassLineFingering(p, bassPitches));
+
     // 8 bass eighth notes (beats 0–7 in this measure).
     for (let i = 0; i < 8; i++) {
       notes.push({
-        pitch:    computeBassLineNote(chord.bassRoot, pattern[i]),
+        pitch:    bassPitches[i],
         duration: "8",
         staff:    "bass",
-        finger:   0,   // no finger annotation for moving bass lines
+        finger:   bf[i],
         measure:  m,
         beat:     i,   // 0–7 encodes eighth-note position within the measure
       });

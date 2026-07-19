@@ -353,10 +353,18 @@ function renderBassMode(
       : "C3/8/r, C3/8/r, C3/8/r, C3/8/r, C3/8/r, C3/8/r, C3/8/r, C3/8/r";
     const bVF = score.notes(bassStr, { clef: "bass", stem: "down" });
 
-    // Colour each note by its play status.
+    // Colour each note by its play status and attach fingering annotations.
     mBassNotes.forEach((en, i) => {
       const status = noteStatuses[allNotes.indexOf(en)] ?? "pending";
       bVF[i].setStyle({ fillStyle: STATUS_COLOUR[status], strokeStyle: STATUS_COLOUR[status] });
+      if (en.finger > 0) {
+        bVF[i].addModifier(
+          new Annotation(String(en.finger))
+            .setFont("Arial", 9)
+            .setVerticalJustification(Annotation.VerticalJustify.BOTTOM),
+          0,
+        );
+      }
     });
 
     // Beam in two groups of 4 (standard 4/4 beaming).

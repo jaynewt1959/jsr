@@ -168,6 +168,5 @@ iPad UDID hardcoded in `DEViPad UDID hardcoded in `DEViPad UDID hardcoded in `DE
 
 - Rhythm metric measures internal consistency only (no metronome target).
 - No export / sharing of progress data.
-- `web/src/engine/fingering.ts` is unused (was JSP scale fingering, does not fit JSR).
-- Bass fingering annotations currently only shown in combined mode; could be added to bass-only.
+- Bass fingering annotations shown in both bass-only and combined modes.
 - Stage 2 combined mode is challenging; a metronome is strongly recommended.

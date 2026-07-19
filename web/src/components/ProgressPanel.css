@@ -157,6 +157,9 @@
   display: flex;
   flex-direction: column;
   gap: 5px;
+  max-height: 120px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .progress-panel__detail-row {
