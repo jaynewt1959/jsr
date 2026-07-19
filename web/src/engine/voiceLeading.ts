@@ -189,6 +189,24 @@ function computeBassLineNote(root: number, semitoneOffset: number): number {
   return n;
 }
 
+/**
+ * Variant for combined (both-hands) mode.
+ *
+ * The treble voicing engine guarantees all RH notes are ≥ TREBLE_MIN (C4 = 60).
+ * This function clamps the LH bass to ≤ B3 (59) so the two registers can
+ * NEVER share a pitch, regardless of key or pattern position.
+ *
+ * The practical effect is that octave-spanning intervals (pattern value 12)
+ * wrap down by one octave for roots above B1 (≈47), which keeps everything
+ * in a clean C2–B3 range — the conventional LH register in grand-staff writing.
+ */
+function computeCombinedBassNote(root: number, semitoneOffset: number): number {
+  let n = root + semitoneOffset;
+  while (n > 59) n -= 12;   // stay strictly below C4 (treble register floor)
+  while (n < 36) n += 12;   // stay at or above C2
+  return n;
+}
+
 // ---------------------------------------------------------------------------
 // Chord definitions
 // ---------------------------------------------------------------------------
@@ -604,34 +622,34 @@ function buildCombinedExercise(
     const [f1, f2, f5] = rhFingering(voicing);
 
     // ─ Beat 0: 4-note chord group (LH + RH block chord) ─────────────────
-    notes.push({ pitch: computeBassLineNote(chord.bassRoot, pattern[0]), duration: "8", staff: "bass",   finger: 0,       measure: m, beat: 0 });
+    notes.push({ pitch: computeCombinedBassNote(chord.bassRoot, pattern[0]), duration: "8", staff: "bass",   finger: 0,       measure: m, beat: 0 });
     notes.push({ pitch: voicing[0], duration: "q", staff: "treble", finger: f1, measure: m, beat: 0, romanNumeral: chord.roman, chordSymbol: chord.symbol });
     notes.push({ pitch: voicing[1], duration: "q", staff: "treble", finger: f2, measure: m, beat: 0 });
     notes.push({ pitch: voicing[2], duration: "q", staff: "treble", finger: f5, measure: m, beat: 0 });
 
     // ─ Beat 0.5: sequential LH only ──────────────────────────────────────
-    notes.push({ pitch: computeBassLineNote(chord.bassRoot, pattern[1]), duration: "8", staff: "bass", finger: 0, measure: m, beat: 0.5 });
+    notes.push({ pitch: computeCombinedBassNote(chord.bassRoot, pattern[1]), duration: "8", staff: "bass", finger: 0, measure: m, beat: 0.5 });
 
     // ─ Beat 1: 2-note chord group (LH + RH arpeggio bottom) ──────────────
-    notes.push({ pitch: computeBassLineNote(chord.bassRoot, pattern[2]), duration: "8", staff: "bass",   finger: 0,  measure: m, beat: 1 });
+    notes.push({ pitch: computeCombinedBassNote(chord.bassRoot, pattern[2]), duration: "8", staff: "bass",   finger: 0,  measure: m, beat: 1 });
     notes.push({ pitch: voicing[0], duration: "q", staff: "treble", finger: f1, measure: m, beat: 1 });
 
     // ─ Beat 1.5: sequential LH only ──────────────────────────────────────
-    notes.push({ pitch: computeBassLineNote(chord.bassRoot, pattern[3]), duration: "8", staff: "bass", finger: 0, measure: m, beat: 1.5 });
+    notes.push({ pitch: computeCombinedBassNote(chord.bassRoot, pattern[3]), duration: "8", staff: "bass", finger: 0, measure: m, beat: 1.5 });
 
     // ─ Beat 2: 2-note chord group (LH + RH arpeggio middle) ──────────────
-    notes.push({ pitch: computeBassLineNote(chord.bassRoot, pattern[4]), duration: "8", staff: "bass",   finger: 0,  measure: m, beat: 2 });
+    notes.push({ pitch: computeCombinedBassNote(chord.bassRoot, pattern[4]), duration: "8", staff: "bass",   finger: 0,  measure: m, beat: 2 });
     notes.push({ pitch: voicing[1], duration: "q", staff: "treble", finger: f2, measure: m, beat: 2 });
 
     // ─ Beat 2.5: sequential LH only ──────────────────────────────────────
-    notes.push({ pitch: computeBassLineNote(chord.bassRoot, pattern[5]), duration: "8", staff: "bass", finger: 0, measure: m, beat: 2.5 });
+    notes.push({ pitch: computeCombinedBassNote(chord.bassRoot, pattern[5]), duration: "8", staff: "bass", finger: 0, measure: m, beat: 2.5 });
 
     // ─ Beat 3: 2-note chord group (LH + RH arpeggio top) ─────────────────
-    notes.push({ pitch: computeBassLineNote(chord.bassRoot, pattern[6]), duration: "8", staff: "bass",   finger: 0,  measure: m, beat: 3 });
+    notes.push({ pitch: computeCombinedBassNote(chord.bassRoot, pattern[6]), duration: "8", staff: "bass",   finger: 0,  measure: m, beat: 3 });
     notes.push({ pitch: voicing[2], duration: "q", staff: "treble", finger: f5, measure: m, beat: 3 });
 
     // ─ Beat 3.5: sequential LH only ──────────────────────────────────────
-    notes.push({ pitch: computeBassLineNote(chord.bassRoot, pattern[7]), duration: "8", staff: "bass", finger: 0, measure: m, beat: 3.5 });
+    notes.push({ pitch: computeCombinedBassNote(chord.bassRoot, pattern[7]), duration: "8", staff: "bass", finger: 0, measure: m, beat: 3.5 });
   }
 
   return {
