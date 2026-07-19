@@ -210,12 +210,14 @@ function renderSightReading(
         const en     = tNotes[0];
         const colour = STATUS_COLOUR[noteStatuses[allNotes.indexOf(en)] ?? "pending"];
         tVF[beat].setStyle({ fillStyle: colour, strokeStyle: colour });
-        tVF[beat].addModifier(
-          new Annotation(String(en.finger))
-            .setFont("Arial", 9)
-            .setVerticalJustification(Annotation.VerticalJustify.TOP),
-          0,
-        );
+        if (en.finger > 0) {
+          tVF[beat].addModifier(
+            new Annotation(String(en.finger))
+              .setFont("Arial", 9)
+              .setVerticalJustification(Annotation.VerticalJustify.TOP),
+            0,
+          );
+        }
       }
     }
 
@@ -228,12 +230,14 @@ function renderSightReading(
     if (beat0Bass) {
       const bStatus = noteStatuses[allNotes.indexOf(beat0Bass)] ?? "pending";
       bVF[0].setStyle({ fillStyle: STATUS_COLOUR[bStatus], strokeStyle: STATUS_COLOUR[bStatus] });
-      bVF[0].addModifier(
-        new Annotation(String(beat0Bass.finger))
-          .setFont("Arial", 9)
-          .setVerticalJustification(Annotation.VerticalJustify.BOTTOM),
-        0,
-      );
+      if (beat0Bass.finger > 0) {
+        bVF[0].addModifier(
+          new Annotation(String(beat0Bass.finger))
+            .setFont("Arial", 9)
+            .setVerticalJustification(Annotation.VerticalJustify.BOTTOM),
+          0,
+        );
+      }
     }
 
     const treble = sys.addStave({ voices: [score.voice(tVF, { time: "4/4" })] });
@@ -272,6 +276,129 @@ function renderSightReading(
   });
 }
 
+// ── Bass mode renderer ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Renders a bass-line exercise:
+ *   Treble stave — voice-led block chord shown in grey (reference only, not played).
+ *   Bass stave   — 8 eighth notes per measure, coloured by noteStatuses, beamed 4+4.
+ */
+function renderBassMode(
+  el: HTMLElement,
+  elementId: string,
+  exercise: Exercise,
+  noteStatuses: NoteStatus[],
+) {
+  const keyId          = exercise.key.split(" ")[0];
+  const pcToLetter     = buildPcToLetter(keyId);
+  const MEASURE1_HEADER = NATURAL_NOTE_START_BASE + (KEY_ACCIDENTALS[keyId] ?? 0) * ACCIDENTAL_W + SMALL_PAD;
+
+  const allNotes    = exercise.notes;           // 32 sequential bass eighth notes
+  const refNotes    = exercise.referenceNotes ?? [];
+  const measureCount = 4;
+
+  // Group by measure.
+  const byMeasure: ExerciseNote[][] = Array.from({ length: measureCount }, () => []);
+  allNotes.forEach(n => byMeasure[n.measure].push(n));
+
+  const refByMeasure: ExerciseNote[][] = Array.from({ length: measureCount }, () => []);
+  refNotes.forEach(n => refByMeasure[n.measure].push(n));
+
+  const noteAreaWidth =
+    (CANVAS_WIDTH - START_X - MEASURE1_HEADER - RIGHT_MARGIN) / measureCount;
+
+  const factory = new Factory({
+    renderer: { elementId, width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
+  });
+  const score = factory.EasyScore();
+
+  const staveXPos: number[] = [];
+  let x = START_X;
+
+  for (let m = 0; m < measureCount; m++) {
+    const isFirst = m === 0;
+    const isFinal = m === measureCount - 1;
+    const width   = isFirst ? MEASURE1_HEADER + noteAreaWidth : noteAreaWidth;
+    staveXPos.push(x);
+
+    const sys        = factory.System({ x, y: 40, width });
+    const mBassNotes = byMeasure[m]    ?? [];
+    const mRefNotes  = refByMeasure[m] ?? [];
+
+    // ── Treble: reference chord (whole note, always grey) ──────────────────
+    const chordPitches = mRefNotes.filter(n => n.staff === "treble");
+    let trebleStr: string;
+    if (chordPitches.length > 1) {
+      const pitches = chordPitches.map(n => {
+        const oct = Math.floor(n.pitch / 12) - 1;
+        return `${pcToLetter[n.pitch % 12] ?? "C"}${oct}`;
+      });
+      trebleStr = `(${pitches.join(" ")})/w`;
+    } else if (chordPitches.length === 1) {
+      trebleStr = midiToEasyScore(chordPitches[0].pitch, "w", pcToLetter);
+    } else {
+      trebleStr = "B4/w/r";
+    }
+    const tVF = score.notes(trebleStr, { stem: "up" });
+    // Muted grey — reference only, never interactive.
+    tVF[0].setStyle({ fillStyle: "#bbbbbb", strokeStyle: "#bbbbbb" });
+
+    // ── Bass: 8 eighth notes ───────────────────────────────────────────────
+    const bassTokens = mBassNotes.map(n => midiToEasyScore(n.pitch, "8", pcToLetter));
+    // Fallback to rests if the measure is somehow empty.
+    const bassStr = bassTokens.length === 8
+      ? bassTokens.join(", ")
+      : "C3/8/r, C3/8/r, C3/8/r, C3/8/r, C3/8/r, C3/8/r, C3/8/r, C3/8/r";
+    const bVF = score.notes(bassStr, { clef: "bass", stem: "down" });
+
+    // Colour each note by its play status.
+    mBassNotes.forEach((en, i) => {
+      const status = noteStatuses[allNotes.indexOf(en)] ?? "pending";
+      bVF[i].setStyle({ fillStyle: STATUS_COLOUR[status], strokeStyle: STATUS_COLOUR[status] });
+    });
+
+    // Beam in two groups of 4 (standard 4/4 beaming).
+    if (bVF.length === 8) {
+      factory.Beam({ notes: bVF.slice(0, 4) });
+      factory.Beam({ notes: bVF.slice(4, 8) });
+    }
+
+    const treble = sys.addStave({ voices: [score.voice(tVF, { time: "4/4" })] });
+    const bass   = sys.addStave({ voices: [score.voice(bVF, { time: "4/4" })] });
+
+    if (isFirst) {
+      treble.addClef("treble").addKeySignature(keyId).addTimeSignature("4/4");
+      bass.addClef("bass").addKeySignature(keyId).addTimeSignature("4/4");
+      treble.setNoteStartX(treble.getNoteStartX() + SMALL_PAD);
+      bass.setNoteStartX(bass.getNoteStartX() + SMALL_PAD);
+      sys.addConnector("brace");
+      sys.addConnector("singleLeft");
+    }
+    if (isFinal) {
+      treble.setEndBarType(Barline.type.END);
+      bass.setEndBarType(Barline.type.END);
+      sys.addConnector("boldDoubleRight");
+    } else {
+      sys.addConnector("singleRight");
+    }
+    x += width;
+  }
+
+  factory.draw();
+
+  const svg = el.querySelector("svg");
+  if (!svg) return;
+  addWhiteBg(svg as SVGElement);
+
+  // Chord symbols from the reference notes (same position logic as sight-reading).
+  refByMeasure.forEach((rNotes, m) => {
+    const cn = rNotes.find(n => n.chordSymbol);
+    if (!cn?.chordSymbol) return;
+    const cx = m === 0 ? staveXPos[0] + MEASURE1_HEADER + 8 : staveXPos[m] + 8;
+    addSvgText(svg as SVGElement, cx, 30, `${cn.chordSymbol}  (${cn.romanNumeral})`);
+  });
+}
+
 // ── component ──────────────────────────────────────────────────────────────────────────────────────
 
 interface ScoreViewProps {
@@ -291,7 +418,11 @@ export function ScoreView({ exercise, noteStatuses }: ScoreViewProps) {
     el.id        = elementId;
     el.innerHTML = "";
 
-    renderSightReading(el, elementId, exercise, noteStatuses);
+    if (exercise.bassMode) {
+      renderBassMode(el, elementId, exercise, noteStatuses);
+    } else {
+      renderSightReading(el, elementId, exercise, noteStatuses);
+    }
 
   }, [exercise, noteStatuses, elementId]);
 

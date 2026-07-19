@@ -273,18 +273,23 @@ export default function App() {
       return;
     }
 
-    // ─ Sequential note (beats 1–3 arpeggio) ─
-    // Silently ignore the current measure's bass root (whole note from beat 0).
-    // It's expected to be held through the measure and must not be flagged as
-    // an error if re-triggered while the player is playing the arpeggio.
-    const currentMeasure = st.exercise.notes[st.currentNoteIndex]?.measure;
-    const measureBassRoot = currentMeasure !== undefined
-      ? st.exercise.notes.find(n => n.measure === currentMeasure && n.staff === "bass")?.pitch ?? null
-      : null;
-    if (measureBassRoot !== null && note === measureBassRoot) {
-      const wantPitch = st.exercise.notes[st.currentNoteIndex]?.pitch;
-      pushDiag({ note: midiName(note), raw: note, phase: 'IGNORE', result: 'BASS ROOT', want: wantPitch !== undefined ? midiName(wantPitch) : '?', idx: st.currentNoteIndex });
-      return;
+    // ─ Sequential note (beats 1–3 arpeggio, or bass mode eighth notes) ─
+    // Silently ignore the current measure's bass root (whole note from beat 0)
+    // when waiting for a treble arpeggio note.  The whole note is physically
+    // held through the measure and must not be flagged as an error on re-press.
+    // In bass mode every expected note is bass-staff, so this guard is skipped
+    // entirely — the root may legitimately recur within the pattern.
+    const currentMeasure  = st.exercise.notes[st.currentNoteIndex]?.measure;
+    const expectedNote    = st.exercise.notes[st.currentNoteIndex];
+    if (expectedNote?.staff !== "bass") {
+      const measureBassRoot = currentMeasure !== undefined
+        ? st.exercise.notes.find(n => n.measure === currentMeasure && n.staff === "bass")?.pitch ?? null
+        : null;
+      if (measureBassRoot !== null && note === measureBassRoot) {
+        const wantPitch = st.exercise.notes[st.currentNoteIndex]?.pitch;
+        pushDiag({ note: midiName(note), raw: note, phase: 'IGNORE', result: 'BASS ROOT', want: wantPitch !== undefined ? midiName(wantPitch) : '?', idx: st.currentNoteIndex });
+        return;
+      }
     }
 
     // Track ALL note-ons in heldNotes for staleness detection (mirrors jsp-ipad).
@@ -297,10 +302,13 @@ export default function App() {
     if (isCorrect) {
       metricsRef.current.correctNotes++;
 
-      // ─ Stale-note check ───────────────────────────────────────────────
+      // ─ Stale-note check ──────────────────────────────────────────────────────
       // prevNote is N-2. Same note can never be stale (must release to re-press).
+      // Stale detection is disabled in bass mode: bass players commonly hold
+      // notes legato while moving to the next, so N-2 hold is expected.
       const tracker = staleTrackerRef.current;
       const isStale = (
+        !st.exercise.bassMode &&
         tracker.prevNote !== null &&
         tracker.prevNote !== note &&
         heldNotesRef.current.has(tracker.prevNote)
@@ -380,6 +388,10 @@ export default function App() {
       },
       toggleDiag:     () => { setDiagMode(prev => !prev); },
       clearDiag:      () => { setDiagEvents([]); diagRunStartRef.current = Date.now(); },
+      setBassMode:    (mode: string) => {
+        resetForNewExercise();
+        dispatch({ type: "SET_CONFIG_MODE", mode: mode as "sightReading" | "bass" });
+      },
       connectMidi:    () => sendCommandRef.current({ type: "startMidi" }),
       disconnectMidi: () => sendCommandRef.current({ type: "stopMidi" }),
     };
@@ -512,7 +524,11 @@ export default function App() {
         <div className="ready-overlay" aria-live="polite" aria-label="Ready to play">
           <div className="ready-overlay__content">
             <span className="ready-overlay__title">READY</span>
-            <span className="ready-overlay__sub">Play the chord to begin</span>
+            <span className="ready-overlay__sub">
+              {exState.exercise.bassMode
+                ? "Play the first bass note to begin"
+                : "Play the chord to begin"}
+            </span>
           </div>
         </div>
       )}

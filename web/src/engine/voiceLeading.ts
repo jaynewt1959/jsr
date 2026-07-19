@@ -10,18 +10,22 @@
  */
 
 export type Staff = "treble" | "bass";
-export type Duration = "w" | "h" | "q";
+export type Duration = "w" | "h" | "q" | "8";
 
 export interface ExerciseNote {
   /** MIDI pitch (0–127). Middle C = 60. */
   pitch: number;
   duration: Duration;
   staff: Staff;
-  /** Finger 1–5. */
+  /** Finger 1–5; 0 = no annotation shown. */
   finger: number;
   /** 0-based measure index. */
   measure: number;
-  /** 0-based beat within the measure. */
+  /**
+   * 0-based beat within the measure.
+   * Quarter-note exercises: 0–3.
+   * Bass-line mode: 0–7 (eighth-note positions).
+   */
   beat: number;
   chordSymbol?: string;
   romanNumeral?: string;
@@ -29,6 +33,14 @@ export interface ExerciseNote {
 
 export interface Exercise {
   notes: ExerciseNote[];
+  /**
+   * Static reference notes displayed but NOT validated (bass mode only).
+   * Contains the treble block chord for each measure so the player can see
+   * which harmony is implied by the bass line they're playing.
+   */
+  referenceNotes?: ExerciseNote[];
+  /** True when this is a bass-line-only exercise (Stage 1 bass mode). */
+  bassMode?: boolean;
   key: string;
   beatsPerMeasure: number;
   progressionName: string;
@@ -138,6 +150,42 @@ export const PROGRESSIONS: ProgressionTemplate[] = [
     ],
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Bass line patterns
+// ---------------------------------------------------------------------------
+
+/**
+ * Semitone offsets from the chord root for each of the 8 eighth-note
+ * positions in a 4/4 measure.  Only quality-independent intervals
+ * (unison, perfect 4th, perfect 5th, octave) are used across chords of
+ * mixed quality, except Blues where all chords are major.
+ */
+const BASS_LINE_PATTERNS: Readonly<Record<string, readonly number[]>> = {
+  // Root → M3 → P5 → M6 → m7 → M6 → P5 → M3  (classic boogie, always major)
+  blues:        [0, 4, 7, 9, 10, 9, 7, 4],
+  // Root → P5 → Oct → P5 → Root → P5 → Oct → P5  (doo-wop pump)
+  "50s":        [0, 7, 12, 7,  0, 7, 12, 7],
+  // Root → P4 → P5 → Oct → P5 → P4 → P5 → Root  (flowing pop arc)
+  pop:          [0, 5,  7, 12,  7, 5,  7, 0],
+  // Root → P4 → P5 → P4 → Root → P4 → P5 → P4  (jazz sub-dominant feel)
+  circle:       [0, 5,  7,  5,  0, 5,  7, 5],
+  // Root → P5 → m7 → Oct → m7 → P5 → Root → P5  (dark minor/rock colour)
+  "minor-feel": [0, 7, 10, 12, 10, 7,  0, 7],
+};
+
+/**
+ * Compute the MIDI pitch for a bass line note given the chord root and a
+ * semitone offset from that root.  Result is kept within a readable
+ * bass-clef range (C2–C4, MIDI 36–60).  When the raw result exceeds C4
+ * it is dropped one octave; the rare case below C2 is raised one octave.
+ */
+function computeBassLineNote(root: number, semitoneOffset: number): number {
+  let n = root + semitoneOffset;
+  while (n > 60) n -= 12;   // stay at or below C4 (one ledger line above bass staff)
+  while (n < 36) n += 12;   // stay at or above C2
+  return n;
+}
 
 // ---------------------------------------------------------------------------
 // Chord definitions
@@ -447,6 +495,72 @@ function buildExercise(
 }
 
 // ---------------------------------------------------------------------------
+// Bass line exercise builder
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a bass-line-only exercise for the given chord progression.
+ *
+ * Each measure contains 8 sequential bass-staff eighth notes (beats 0–7).
+ * The exercise also includes `referenceNotes` — the voice-led treble block
+ * chord for each measure — which are displayed in grey but never validated.
+ */
+function buildBassLineExercise(
+  progression: ChordDef[],
+  startVoicing: Voicing,
+  keyName: string,
+  progressionName: string,
+  progressionLabel: string,
+  progressionId: string,
+): Exercise {
+  const pattern = BASS_LINE_PATTERNS[progressionId] ?? BASS_LINE_PATTERNS["50s"];
+  const notes: ExerciseNote[]          = [];
+  const referenceNotes: ExerciseNote[] = [];
+
+  let prevVoicing = startVoicing;
+
+  for (let m = 0; m < progression.length; m++) {
+    const chord   = progression[m];
+    const voicing = m === 0 ? startVoicing : bestVoicing(chord, prevVoicing);
+    prevVoicing   = voicing;
+
+    const [f1, f2, f5] = rhFingering(voicing);
+
+    // Reference treble block chord (display only, never validated).
+    // First note carries the chord symbol for the score overlay.
+    referenceNotes.push({
+      pitch: voicing[0], duration: "q", staff: "treble",
+      finger: f1, measure: m, beat: 0,
+      romanNumeral: chord.roman, chordSymbol: chord.symbol,
+    });
+    referenceNotes.push({ pitch: voicing[1], duration: "q", staff: "treble", finger: f2, measure: m, beat: 0 });
+    referenceNotes.push({ pitch: voicing[2], duration: "q", staff: "treble", finger: f5, measure: m, beat: 0 });
+
+    // 8 bass eighth notes (beats 0–7 in this measure).
+    for (let i = 0; i < 8; i++) {
+      notes.push({
+        pitch:    computeBassLineNote(chord.bassRoot, pattern[i]),
+        duration: "8",
+        staff:    "bass",
+        finger:   0,   // no finger annotation for moving bass lines
+        measure:  m,
+        beat:     i,   // 0–7 encodes eighth-note position within the measure
+      });
+    }
+  }
+
+  return {
+    notes,
+    referenceNotes,
+    bassMode: true,
+    key: keyName,
+    beatsPerMeasure: 4,
+    progressionName,
+    progressionLabel,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -465,6 +579,29 @@ export function getExercise(
     `${key.id} major`,
     template.name,
     template.label,
+  );
+}
+
+/**
+ * Build a bass-line exercise for the given key and progression.
+ * Same variant system as getExercise (index 0–3).
+ */
+export function getBassLineExercise(
+  index: number,
+  keyId: string = "C",
+  progressionId: string = "50s",
+): Exercise {
+  const key      = KEYS.find(k => k.id === keyId)                ?? KEYS[0];
+  const template = PROGRESSIONS.find(p => p.id === progressionId) ?? PROGRESSIONS[1];
+  const prog     = buildProgression(key, template);
+  const starts   = getStartingVoicings(prog[0]);
+  const start    = starts[index % starts.length];
+  return buildBassLineExercise(
+    prog, start,
+    `${key.id} major`,
+    template.name,
+    template.label,
+    template.id,
   );
 }
 
