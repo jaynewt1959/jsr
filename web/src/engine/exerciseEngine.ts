@@ -211,7 +211,13 @@ function handleNotePlayed(state: ExerciseState, midiNote: number): ExerciseState
     };
   }
 
-  newStatuses[nextIndex] = "current";
+  // Mark the entire next chord group as 'current' so every member is
+  // highlighted simultaneously.  For a single sequential note this is a
+  // no-op (group size 1); for a combined-mode LH+RH chord group at beats
+  // 1/2/3, both the bass and treble members are marked together.
+  const nextGroup = chordGroupOf(state.exercise.notes, nextIndex);
+  for (const i of nextGroup) newStatuses[i] = 'current';
+
   return {
     ...state,
     noteStatuses: newStatuses,

@@ -494,12 +494,17 @@ function renderCombinedMode(
       tVF[0].setStyle({ fillStyle: STATUS_COLOUR_TREBLE_CHORD[status], strokeStyle: STATUS_COLOUR_TREBLE_CHORD[status] });
     }
     // Arpeggio notes at beats 1–3.
+    // In combined mode these are 2-note chord groups (LH+RH), so orange
+    // (STATUS_COLOUR_TREBLE_CHORD) matches the keyboard flash for RH notes.
     for (let beat = 1; beat <= 3; beat++) {
       const tNotes = tByBeat.get(beat) ?? [];
       if (tNotes.length === 1) {
         const en     = tNotes[0];
-        const colour = STATUS_COLOUR[noteStatuses[allNotes.indexOf(en)] ?? "pending"];
-        tVF[beat].setStyle({ fillStyle: colour, strokeStyle: colour });
+        const status = noteStatuses[allNotes.indexOf(en)] ?? "pending";
+        tVF[beat].setStyle({
+          fillStyle:   STATUS_COLOUR_TREBLE_CHORD[status],
+          strokeStyle: STATUS_COLOUR_TREBLE_CHORD[status],
+        });
         if (en.finger > 0) {
           tVF[beat].addModifier(
             new Annotation(String(en.finger))
