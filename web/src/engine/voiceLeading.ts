@@ -415,6 +415,49 @@ function lhFingering(bassNote: number, allBassNotes: number[]): number {
   return Math.max(1, Math.min(5, 5 - Math.round(4 * t)));
 }
 
+/**
+ * Assign a left-hand finger (1–5) to a bass line note in combined mode.
+ *
+ * @param note         The MIDI pitch to assign a finger to.
+ * @param measureNotes All 8 MIDI pitches in this measure’s bass line
+ *                     (used to derive the distinct pitch set for this chord).
+ *
+ * Rules — always pinky on lowest, thumb on highest:
+ *   n=2 distinct pitches : 5–1 (root-fifth pump)
+ *   n=3 distinct pitches : middle note → 2 when in the upper half of the
+ *                          span (close to the thumb), 4 in the lower half.
+ *                          Gives natural 5–2–1 for C–F–G and C–G–Bb.
+ *   n=4 distinct pitches : delegates to lhFingering’s span-aware algorithm.
+ *   n≥5 distinct pitches : even 5→4→3→2→1 spread by rank index, not pitch.
+ *                          Guarantees a distinct finger per note for the
+ *                          Blues boogie pattern (5 pitches → 5,4,3,2,1).
+ */
+function bassLineFingering(note: number, measureNotes: number[]): number {
+  const unique = [...new Set(measureNotes)].sort((a, b) => a - b);
+  const n   = unique.length;
+  const idx = unique.indexOf(note);
+
+  if (n <= 1)      return 3;   // single pitch → middle
+  if (idx === 0)   return 5;   // lowest → pinky
+  if (idx === n-1) return 1;   // highest → thumb
+
+  if (n === 3) {
+    const span = unique[2] - unique[0];
+    // Upper half of span → index (2); lower half → ring (4).
+    return (note - unique[0]) / span > 0.5 ? 2 : 4;
+  }
+
+  if (n === 4) {
+    // Re-use the existing span-aware, gap-sensitive algorithm.
+    return lhFingering(note, unique);
+  }
+
+  // n ≥ 5: spread evenly 5→4→3→2→1 by rank index rather than pitch distance.
+  // Using idx/(n-1) instead of (note-lo)/span avoids the pitch-clustering
+  // problem where two close high notes both map to finger 1.
+  return Math.max(1, Math.min(5, 5 - Math.round(4 * (idx / (n - 1)))));
+}
+
 function rhFingering(voicing: Voicing): [number, number, number] {
   const lower = voicing[1] - voicing[0];
   const upper = voicing[2] - voicing[1];
@@ -621,35 +664,40 @@ function buildCombinedExercise(
 
     const [f1, f2, f5] = rhFingering(voicing);
 
+    // Pre-compute all 8 bass pitches for this measure so bassLineFingering
+    // can see the full distinct-pitch set when assigning each finger.
+    const bassPitches = pattern.map(offset => computeCombinedBassNote(chord.bassRoot, offset));
+    const bf = bassPitches.map(p => bassLineFingering(p, bassPitches));
+
     // ─ Beat 0: 4-note chord group (LH + RH block chord) ─────────────────
-    notes.push({ pitch: computeCombinedBassNote(chord.bassRoot, pattern[0]), duration: "8", staff: "bass",   finger: 0,       measure: m, beat: 0 });
+    notes.push({ pitch: bassPitches[0], duration: "8", staff: "bass", finger: bf[0], measure: m, beat: 0 });
     notes.push({ pitch: voicing[0], duration: "q", staff: "treble", finger: f1, measure: m, beat: 0, romanNumeral: chord.roman, chordSymbol: chord.symbol });
     notes.push({ pitch: voicing[1], duration: "q", staff: "treble", finger: f2, measure: m, beat: 0 });
     notes.push({ pitch: voicing[2], duration: "q", staff: "treble", finger: f5, measure: m, beat: 0 });
 
     // ─ Beat 0.5: sequential LH only ──────────────────────────────────────
-    notes.push({ pitch: computeCombinedBassNote(chord.bassRoot, pattern[1]), duration: "8", staff: "bass", finger: 0, measure: m, beat: 0.5 });
+    notes.push({ pitch: bassPitches[1], duration: "8", staff: "bass", finger: bf[1], measure: m, beat: 0.5 });
 
     // ─ Beat 1: 2-note chord group (LH + RH arpeggio bottom) ──────────────
-    notes.push({ pitch: computeCombinedBassNote(chord.bassRoot, pattern[2]), duration: "8", staff: "bass",   finger: 0,  measure: m, beat: 1 });
+    notes.push({ pitch: bassPitches[2], duration: "8", staff: "bass", finger: bf[2], measure: m, beat: 1 });
     notes.push({ pitch: voicing[0], duration: "q", staff: "treble", finger: f1, measure: m, beat: 1 });
 
     // ─ Beat 1.5: sequential LH only ──────────────────────────────────────
-    notes.push({ pitch: computeCombinedBassNote(chord.bassRoot, pattern[3]), duration: "8", staff: "bass", finger: 0, measure: m, beat: 1.5 });
+    notes.push({ pitch: bassPitches[3], duration: "8", staff: "bass", finger: bf[3], measure: m, beat: 1.5 });
 
     // ─ Beat 2: 2-note chord group (LH + RH arpeggio middle) ──────────────
-    notes.push({ pitch: computeCombinedBassNote(chord.bassRoot, pattern[4]), duration: "8", staff: "bass",   finger: 0,  measure: m, beat: 2 });
+    notes.push({ pitch: bassPitches[4], duration: "8", staff: "bass", finger: bf[4], measure: m, beat: 2 });
     notes.push({ pitch: voicing[1], duration: "q", staff: "treble", finger: f2, measure: m, beat: 2 });
 
     // ─ Beat 2.5: sequential LH only ──────────────────────────────────────
-    notes.push({ pitch: computeCombinedBassNote(chord.bassRoot, pattern[5]), duration: "8", staff: "bass", finger: 0, measure: m, beat: 2.5 });
+    notes.push({ pitch: bassPitches[5], duration: "8", staff: "bass", finger: bf[5], measure: m, beat: 2.5 });
 
     // ─ Beat 3: 2-note chord group (LH + RH arpeggio top) ─────────────────
-    notes.push({ pitch: computeCombinedBassNote(chord.bassRoot, pattern[6]), duration: "8", staff: "bass",   finger: 0,  measure: m, beat: 3 });
+    notes.push({ pitch: bassPitches[6], duration: "8", staff: "bass", finger: bf[6], measure: m, beat: 3 });
     notes.push({ pitch: voicing[2], duration: "q", staff: "treble", finger: f5, measure: m, beat: 3 });
 
     // ─ Beat 3.5: sequential LH only ──────────────────────────────────────
-    notes.push({ pitch: computeCombinedBassNote(chord.bassRoot, pattern[7]), duration: "8", staff: "bass", finger: 0, measure: m, beat: 3.5 });
+    notes.push({ pitch: bassPitches[7], duration: "8", staff: "bass", finger: bf[7], measure: m, beat: 3.5 });
   }
 
   return {

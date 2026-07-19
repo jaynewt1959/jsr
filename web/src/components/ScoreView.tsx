@@ -519,6 +519,14 @@ function renderCombinedMode(
     bassNotes.forEach((en, i) => {
       const status = noteStatuses[allNotes.indexOf(en)] ?? "pending";
       bVF[i].setStyle({ fillStyle: STATUS_COLOUR[status], strokeStyle: STATUS_COLOUR[status] });
+      if (en.finger > 0) {
+        bVF[i].addModifier(
+          new Annotation(String(en.finger))
+            .setFont("Arial", 9)
+            .setVerticalJustification(Annotation.VerticalJustify.BOTTOM),
+          0,
+        );
+      }
     });
 
     // Beam in two groups of 4.
