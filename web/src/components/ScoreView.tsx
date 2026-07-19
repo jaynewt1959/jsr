@@ -91,10 +91,12 @@ const KEY_ACCIDENTALS: Record<string, number> = {
 };
 
 
-// Fixed canvas size.
-// Sight-reading: 4 measures; chord recognition: 5 measures.
-const CANVAS_WIDTH  = 970;
-const CANVAS_HEIGHT = 280;
+// Fixed canvas width; heights are mode-specific so each renderer gets
+// exactly the vertical room it needs without wasting space in simpler modes.
+const CANVAS_WIDTH             = 970;
+const CANVAS_HEIGHT_SIGHT      = 280;  // sight-reading: whole-note bass root, no annotations below
+const CANVAS_HEIGHT_BASS       = 320;  // bass-only: eighth notes in bass, more room below staff
+const CANVAS_HEIGHT_COMBINED   = 380;  // both hands: beamed eighths + finger numbers below bass
 
 // ── SVG helpers ───────────────────────────────────────────────────────────
 
@@ -146,7 +148,7 @@ function renderSightReading(
     (CANVAS_WIDTH - START_X - MEASURE1_HEADER - RIGHT_MARGIN) / measureCount;
 
   const factory = new Factory({
-    renderer: { elementId, width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
+    renderer: { elementId, width: CANVAS_WIDTH, height: CANVAS_HEIGHT_SIGHT },
   });
   const score = factory.EasyScore();
 
@@ -308,7 +310,7 @@ function renderBassMode(
     (CANVAS_WIDTH - START_X - MEASURE1_HEADER - RIGHT_MARGIN) / measureCount;
 
   const factory = new Factory({
-    renderer: { elementId, width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
+    renderer: { elementId, width: CANVAS_WIDTH, height: CANVAS_HEIGHT_BASS },
   });
   const score = factory.EasyScore();
 
@@ -431,7 +433,7 @@ function renderCombinedMode(
     (CANVAS_WIDTH - START_X - MEASURE1_HEADER - RIGHT_MARGIN) / measureCount;
 
   const factory = new Factory({
-    renderer: { elementId, width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
+    renderer: { elementId, width: CANVAS_WIDTH, height: CANVAS_HEIGHT_COMBINED },
   });
   const score = factory.EasyScore();
 
